@@ -1,0 +1,204 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from typing import Optional
+
+from app.core.database import get_db
+from app.core.security import get_current_user, require_role
+from app.models.user import User
+from app.models.risk import RiskRule, RiskCategory, RiskItem, RiskLevel
+from app.schemas.risk import (
+    RiskRuleCreate, RiskRuleUpdate, RiskRuleResponse, RiskRuleList,
+    RiskCategoryCreate, RiskCategoryResponse,
+    RiskItemCreate, RiskItemUpdate, RiskItemResponse, RiskItemList,
+)
+
+router = APIRouter()
+
+
+# Risk Categories
+@router.get("/categories", response_model=list[RiskCategoryResponse])
+async def list_risk_categories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取风险分类列表"""
+    result = await db.execute(
+        select(RiskCategory)
+        .where(RiskCategory.is_active == True)
+        .order_by(RiskCategory.sort_order)
+    )
+    categories = result.scalars().all()
+    return categories
+
+
+@router.post("/categories", response_model=RiskCategoryResponse, status_code=status.HTTP_201_CREATED)
+async def create_risk_category(
+    category_data: RiskCategoryCreate,
+    current_user: User = Depends(require_role("admin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建风险分类"""
+    category = RiskCategory(**category_data.model_dump())
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
+# Risk Rules
+@router.get("/rules", response_model=RiskRuleList)
+async def list_risk_rules(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    category_id: Optional[int] = None,
+    risk_level: Optional[RiskLevel] = None,
+    contract_type: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取风险规则列表"""
+    query = select(RiskRule)
+    count_query = select(func.count()).select_from(RiskRule)
+    
+    if category_id:
+        query = query.where(RiskRule.category_id == category_id)
+        count_query = count_query.where(RiskRule.category_id == category_id)
+    
+    if risk_level:
+        query = query.where(RiskRule.risk_level == risk_level)
+        count_query = count_query.where(RiskRule.risk_level == risk_level)
+    
+    if contract_type:
+        query = query.where(RiskRule.contract_type == contract_type)
+        count_query = count_query.where(RiskRule.contract_type == contract_type)
+    
+    if is_active is not None:
+        query = query.where(RiskRule.is_active == is_active)
+        count_query = count_query.where(RiskRule.is_active == is_active)
+    
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Get paginated results
+    query = query.order_by(RiskRule.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    rules = result.scalars().all()
+    
+    return RiskRuleList(total=total, items=rules)
+
+
+@router.post("/rules", response_model=RiskRuleResponse, status_code=status.HTTP_201_CREATED)
+async def create_risk_rule(
+    rule_data: RiskRuleCreate,
+    current_user: User = Depends(require_role("admin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """创建风险规则"""
+    rule = RiskRule(
+        **rule_data.model_dump(),
+        created_by=current_user.id,
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+@router.put("/rules/{rule_id}", response_model=RiskRuleResponse)
+async def update_risk_rule(
+    rule_id: int,
+    rule_data: RiskRuleUpdate,
+    current_user: User = Depends(require_role("admin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新风险规则"""
+    result = await db.execute(select(RiskRule).where(RiskRule.id == rule_id))
+    rule = result.scalar_one_or_none()
+    
+    if not rule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="风险规则不存在",
+        )
+    
+    update_data = rule_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(rule, field, value)
+    
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+# Risk Items
+@router.get("/items", response_model=RiskItemList)
+async def list_risk_items(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    contract_id: Optional[int] = None,
+    risk_level: Optional[RiskLevel] = None,
+    is_resolved: Optional[bool] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取风险项列表"""
+    query = select(RiskItem)
+    count_query = select(func.count()).select_from(RiskItem)
+    
+    if contract_id:
+        query = query.where(RiskItem.contract_id == contract_id)
+        count_query = count_query.where(RiskItem.contract_id == contract_id)
+    
+    if risk_level:
+        query = query.where(RiskItem.risk_level == risk_level)
+        count_query = count_query.where(RiskItem.risk_level == risk_level)
+    
+    if is_resolved is not None:
+        query = query.where(RiskItem.is_resolved == is_resolved)
+        count_query = count_query.where(RiskItem.is_resolved == is_resolved)
+    
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Get paginated results
+    query = query.order_by(RiskItem.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    return RiskItemList(total=total, items=items)
+
+
+@router.put("/items/{item_id}", response_model=RiskItemResponse)
+async def update_risk_item(
+    item_id: int,
+    item_data: RiskItemUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新风险项"""
+    result = await db.execute(select(RiskItem).where(RiskItem.id == item_id))
+    item = result.scalar_one_or_none()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="风险项不存在",
+        )
+    
+    update_data = item_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+    
+    if item_data.is_resolved:
+        item.resolved_by = current_user.id
+        item.resolved_at = datetime.utcnow()
+    
+    await db.commit()
+    await db.refresh(item)
+    return item
