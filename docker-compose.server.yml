@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: contract-review-api
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@host.docker.internal:5432/contract_review
+      - REDIS_URL=redis://host.docker.internal:6379/0
+      - SECRET_KEY=contract-review-secret-key-2026
+      - DEBUG=false
+      - ALLOWED_ORIGINS=http://123.57.207.169,http://123.57.207.169/contract-review-new
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - uploads_data:/app/uploads
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: contract-review-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+
+volumes:
+  uploads_data:
