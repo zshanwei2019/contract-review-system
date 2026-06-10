@@ -24,10 +24,15 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user_roles = relationship("UserRole", back_populates="user")
+    user_roles = relationship("UserRole", back_populates="user", lazy="selectin")
     contracts = relationship("Contract", back_populates="uploader", foreign_keys="Contract.uploader_id")
     review_tasks = relationship("ReviewTask", back_populates="reviewer", foreign_keys="ReviewTask.reviewer_id")
     notifications = relationship("Notification", back_populates="user")
+    
+    @property
+    def roles(self) -> list:
+        """Get list of role codes for this user"""
+        return [ur.role.code for ur in self.user_roles if ur.role]
 
 
 class Role(Base):
@@ -72,7 +77,7 @@ class UserRole(Base):
     
     # Relationships
     user = relationship("User", back_populates="user_roles")
-    role = relationship("Role", back_populates="user_roles")
+    role = relationship("Role", back_populates="user_roles", lazy="selectin")
 
 
 class RolePermission(Base):

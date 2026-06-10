@@ -85,8 +85,22 @@ async def get_current_active_user(
 
 def require_role(*roles: str):
     """Require user to have one of the specified roles"""
-    async def role_checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role not in roles:
+    async def role_checker(
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        # Check if user is superadmin (bypass role check)
+        if current_user.is_superuser:
+            return current_user
+        # Check user roles via UserRole relationship
+        from app.models.user import UserRole, Role
+        result = await db.execute(
+            select(Role.code)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == current_user.id)
+        )
+        user_roles = [row[0] for row in result.fetchall()]
+        if not any(r in roles for r in user_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="权限不足"
