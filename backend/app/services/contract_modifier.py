@@ -110,10 +110,10 @@ class ContractModifier:
         for finding in findings:
             findings_list.append({
                 "id": finding.id,
-                "clause": finding.clause or "",
+                "clause": finding.clause_reference or "",
                 "content": finding.content,
                 "risk_level": finding.risk_level or "medium",
-                "category": finding.category or "",
+                "category": finding.opinion_type or "",
                 "suggestion": finding.suggestion or ""
             })
         
