@@ -146,6 +146,6 @@ class AgentMessage(Base):
     to_agent = Column(String(50))                      # None = broadcast
     message_type = Column(String(50))                  # finding/question/suggestion
     content = Column(Text, nullable=False)
-    metadata = Column(Text)  # JSON
+    extra_metadata = Column(Text)  # JSON
 
     created_at = Column(DateTime, default=datetime.utcnow)

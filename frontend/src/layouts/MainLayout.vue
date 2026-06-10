@@ -35,7 +35,7 @@
             <el-menu-item
               v-for="child in getVisibleChildren(route)"
               :key="child.path"
-              :index="`${route.path}/${child.path}`"
+              :index="`/${route.path}/${child.path}`"
             >
               {{ child.meta?.title }}
             </el-menu-item>
@@ -145,9 +145,9 @@ const breadcrumbs = computed(() => {
 // 获取菜单路径
 const getMenuPath = (route: any) => {
   if (route.children && route.children.length === 1) {
-    return `${route.path}/${route.children[0].path}`
+    return `/${route.path}/${route.children[0].path}`
   }
-  return route.path
+  return `/${route.path}`
 }
 
 // 获取可见子菜单

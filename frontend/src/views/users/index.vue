@@ -75,7 +75,13 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm')
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const res = await usersApi.list({ page: pagination.page, page_size: pagination.page_size, ...searchForm })
+    const params: any = {
+      page: pagination.page,
+      page_size: pagination.page_size,
+    }
+    if (searchForm.keyword) params.keyword = searchForm.keyword
+    
+    const res = await usersApi.list(params)
     users.value = res.items || []
     pagination.total = res.total || 0
   } catch {} finally { loading.value = false }

@@ -60,7 +60,7 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    result = await db.execute(select(User).where(User.id == token_data.sub))
+    result = await db.execute(select(User).where(User.id == int(token_data.sub)))
     user = result.scalar_one_or_none()
     
     if user is None:

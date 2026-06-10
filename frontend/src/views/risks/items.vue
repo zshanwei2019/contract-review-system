@@ -93,7 +93,14 @@ const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 const fetchItems = async () => {
   loading.value = true
   try {
-    const res = await risksApi.getItems({ page: pagination.page, page_size: pagination.page_size, ...searchForm })
+    const params: any = {
+      page: pagination.page,
+      page_size: pagination.page_size,
+    }
+    if (searchForm.risk_level) params.risk_level = searchForm.risk_level
+    if (searchForm.is_resolved !== undefined) params.is_resolved = searchForm.is_resolved
+    
+    const res = await risksApi.getItems(params)
     items.value = res.items || []
     pagination.total = res.total || 0
   } catch { ElMessage.error('获取风险项失败') } finally { loading.value = false }

@@ -152,11 +152,15 @@ const pagination = reactive({
 const fetchContracts = async () => {
   loading.value = true
   try {
-    const res = await contractsApi.list({
+    const params: any = {
       page: pagination.page,
       page_size: pagination.page_size,
-      ...searchForm,
-    })
+    }
+    if (searchForm.keyword) params.keyword = searchForm.keyword
+    if (searchForm.contract_type) params.contract_type = searchForm.contract_type
+    if (searchForm.status) params.status = searchForm.status
+    
+    const res = await contractsApi.list(params)
     contracts.value = res.items || []
     pagination.total = res.total || 0
   } catch {

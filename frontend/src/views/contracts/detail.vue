@@ -141,7 +141,7 @@
     <el-dialog v-model="showAiResult" title="AI智能审查结果" width="700px">
       <div v-if="aiResult.risk_level">
         <el-alert
-          :title="`风险等级: ${getRiskLabel(aiResult.risk_level)}`
+          :title="'风险等级: ' + getRiskLabel(aiResult.risk_level)"
           :description="aiResult.summary"
           :type="aiResult.risk_level === 'high' ? 'error' : aiResult.risk_level === 'medium' ? 'warning' : 'success'"
           show-icon

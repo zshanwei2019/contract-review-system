@@ -141,11 +141,14 @@ const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 const fetchReviews = async () => {
   loading.value = true
   try {
-    const res = await reviewsApi.list({
+    const params: any = {
       page: pagination.page,
       page_size: pagination.page_size,
-      ...searchForm,
-    })
+    }
+    if (searchForm.status) params.status = searchForm.status
+    if (searchForm.contract_id) params.contract_id = searchForm.contract_id
+    
+    const res = await reviewsApi.list(params)
     reviews.value = res.items || []
     pagination.total = res.total || 0
   } catch {
