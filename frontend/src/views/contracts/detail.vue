@@ -6,8 +6,8 @@
           <div class="header-left">
             <el-button icon="Back" @click="router.back()">返回</el-button>
             <span class="title">合同详情</span>
-            <el-tag :type="contractStatusColors[contract.status]" size="large">
-              {{ contractStatusLabels[contract.status] }}
+            <el-tag :type="contractStatusColors[contract.status as ContractStatus] as any" size="large">
+              {{ contractStatusLabels[contract.status as ContractStatus] }}
             </el-tag>
           </div>
           <div class="header-actions">
@@ -48,6 +48,14 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-button
+              v-if="contract.risk_level"
+              type="success"
+              icon="MagicStick"
+              @click="handleGetModifications"
+            >
+              AI修改建议
+            </el-button>
           </div>
         </div>
       </template>
@@ -56,7 +64,7 @@
       <el-descriptions :column="2" border class="info-section">
         <el-descriptions-item label="合同编号">{{ contract.contract_no }}</el-descriptions-item>
         <el-descriptions-item label="合同类型">
-          <el-tag size="small">{{ contractTypeLabels[contract.contract_type] }}</el-tag>
+          <el-tag size="small">{{ contractTypeLabels[contract.contract_type as ContractType] || contract.contract_type }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="甲方">{{ contract.party_a || '-' }}</el-descriptions-item>
         <el-descriptions-item label="乙方">{{ contract.party_b || '-' }}</el-descriptions-item>
@@ -64,9 +72,9 @@
           {{ contract.amount ? formatAmount(contract.amount) : '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="币种">{{ contract.currency || 'CNY' }}</el-descriptions-item>
-        <el-descriptions-item label="签订日期">{{ contract.sign_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="生效日期">{{ contract.effective_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="到期日期">{{ contract.expiry_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="签订日期">{{ contract.sign_date ? String(contract.sign_date).substring(0, 10) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="生效日期">{{ contract.effective_date ? String(contract.effective_date).substring(0, 10) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="到期日期">{{ contract.expiry_date ? String(contract.expiry_date).substring(0, 10) : '-' }}</el-descriptions-item>
         <el-descriptions-item label="所属部门">{{ contract.department || '-' }}</el-descriptions-item>
         <el-descriptions-item label="项目名称" :span="2">{{ contract.project_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="合同描述" :span="2">{{ contract.description || '-' }}</el-descriptions-item>
@@ -89,7 +97,7 @@
             <el-statistic title="风险评分" :value="contract.risk_score || 0" suffix="/ 100" />
           </el-col>
           <el-col :span="8">
-            <el-statistic title="审查时间" :value="contract.reviewed_at ? formatDate(contract.reviewed_at) : '-'" />
+            <el-statistic title="审查时间" :value="contract.reviewed_at ? formatDate(contract.reviewed_at) as any : '-'" />
           </el-col>
         </el-row>
       </div>
@@ -169,6 +177,64 @@
         <el-button @click="showAiResult = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 修改建议对话框 -->
+    <el-dialog
+      v-model="showModificationDialog"
+      title="AI修改建议"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="modificationSuggestions.length === 0" style="text-align: center; padding: 40px;">
+        <el-empty description="暂无修改建议" />
+      </div>
+      <div v-else>
+        <el-alert
+          :title="`共 ${modificationSuggestions.length} 个修改建议`"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+        <el-table
+          :data="modificationSuggestions"
+          border
+          style="width: 100%"
+          @selection-change="(val: any[]) => selectedSuggestions = val.map((v: any) => v.id)"
+        >
+          <el-table-column type="selection" width="55" />
+          <el-table-column label="条款" prop="clause" width="120" />
+          <el-table-column label="优先级" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getPriorityType(row.priority)">
+                {{ getPriorityLabel(row.priority) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="修改理由" prop="reason" min-width="200" show-overflow-tooltip />
+          <el-table-column label="法律依据" prop="legal_basis" min-width="150" show-overflow-tooltip />
+        </el-table>
+        <div style="margin-top: 16px; padding: 12px; background: #f5f7fa; border-radius: 4px;">
+          <p style="margin: 0 0 8px; font-weight: 600;">📝 详细修改建议：</p>
+          <div v-for="item in modificationSuggestions" :key="item.id" style="margin-bottom: 12px;">
+            <p style="margin: 0 0 4px; color: #409eff; font-weight: 500;">{{ item.clause }}：</p>
+            <p style="margin: 0 0 4px; color: #666;">{{ item.reason }}</p>
+            <p style="margin: 0; color: #e6a23c;">⚠️ {{ item.risk_if_not_modified }}</p>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showModificationDialog = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="applyingModifications"
+          :disabled="selectedSuggestions.length === 0"
+          @click="handleApplyModifications"
+        >
+          应用选中的修改建议 ({{ selectedSuggestions.length }})
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -179,6 +245,7 @@ import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
 import { agentApi } from '@/api/agent'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
+import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 
@@ -191,6 +258,10 @@ const reviews = ref<any[]>([])
 const versions = ref<any[]>([])
 const showAiResult = ref(false)
 const aiResult = ref<any>({})
+const modificationSuggestions = ref<any[]>([])
+const showModificationDialog = ref(false)
+const selectedSuggestions = ref<string[]>([])
+const applyingModifications = ref(false)
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -206,8 +277,8 @@ const fetchContract = async () => {
       reviewsApi.list({ contract_id: contractId.value }),
       contractsApi.getVersions(contractId.value),
     ])
-    reviews.value = reviewsRes.items || []
-    versions.value = versionsRes || []
+    reviews.value = (reviewsRes as any).items || []
+    versions.value = (versionsRes as any) || []
   } catch {
     ElMessage.error('获取合同详情失败')
   } finally {
@@ -218,7 +289,7 @@ const fetchContract = async () => {
 const handleSubmit = async () => {
   await ElMessageBox.confirm('确定提交该合同审查？', '提示', { type: 'warning' })
   try {
-    await contractsApi.submit(contractId.value)
+    await contractsApi.submit(contractId.value as any)
     ElMessage.success('提交成功')
     fetchContract()
   } catch {
@@ -243,7 +314,7 @@ const handleAiReview = async () => {
   
   aiReviewing.value = true
   try {
-    const result = await contractsApi.aiReview(contractId.value)
+    const result: any = await contractsApi.aiReview(contractId.value)
     aiResult.value = result
     showAiResult.value = true
     ElMessage.success('AI审查完成')
@@ -271,7 +342,7 @@ const handleAgentReview = async (command: string) => {
   
   aiReviewing.value = true
   try {
-    const result = await agentApi.multiAgentReview(contractId.value, agents)
+    const result: any = await agentApi.multiAgentReview(contractId.value, agents)
     aiResult.value = {
       review_task_id: result.review_task_id,
       risk_level: result.merged_result?.risk_level,
@@ -287,6 +358,66 @@ const handleAgentReview = async (command: string) => {
   } finally {
     aiReviewing.value = false
   }
+}
+
+const handleGetModifications = async () => {
+  try {
+    const result: any = await contractsApi.getModificationSuggestions(contractId.value)
+    modificationSuggestions.value = result.suggestions || []
+    showModificationDialog.value = true
+    selectedSuggestions.value = []
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '获取修改建议失败')
+  }
+}
+
+const handleApplyModifications = async () => {
+  if (selectedSuggestions.value.length === 0) {
+    ElMessage.warning('请选择要应用的修改建议')
+    return
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要应用选中的 ${selectedSuggestions.value.length} 个修改建议吗？`,
+      '确认修改',
+      { confirmButtonText: '应用', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  
+  applyingModifications.value = true
+  try {
+    const result: any = await contractsApi.applyModifications(contractId.value, selectedSuggestions.value)
+    ElMessage.success(result.message)
+    showModificationDialog.value = false
+    fetchContract()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '应用修改建议失败')
+  } finally {
+    applyingModifications.value = false
+  }
+}
+
+const getPriorityType = (priority: string) => {
+  const map: Record<string, string> = {
+    critical: 'danger',
+    high: 'warning',
+    medium: 'info',
+    low: 'success'
+  }
+  return (map[priority] || 'info') as any
+}
+
+const getPriorityLabel = (priority: string) => {
+  const map: Record<string, string> = {
+    critical: '必须修改',
+    high: '强烈建议',
+    medium: '建议修改',
+    low: '可选修改'
+  }
+  return map[priority] || priority
 }
 
 const formatAmount = (amount: number) => {

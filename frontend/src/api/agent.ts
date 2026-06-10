@@ -120,6 +120,10 @@ export const agentApi = {
     return request.get('/agent/ai-config')
   },
 
+  updateAIConfig(data: { base_url: string; model: string; api_key: string }) {
+    return request.put('/agent/ai-config', data)
+  },
+
   testAIConnection() {
     return request.post('/agent/test-ai-connection')
   },

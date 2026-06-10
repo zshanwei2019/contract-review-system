@@ -47,7 +47,7 @@
           </el-button>
         </el-descriptions-item>
         <el-descriptions-item label="合同类型">
-          {{ contractTypeLabels[review.contract?.contract_type] || '-' }}
+          {{ (contractTypeLabels as any)[review.contract?.contract_type] || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="风险等级">
           <el-tag v-if="review.risk_level" :type="getRiskColor(review.risk_level)">
@@ -319,7 +319,7 @@ const fetchReview = async () => {
   loading.value = true
   try {
     review.value = await reviewsApi.get(reviewId.value)
-    const opinionsRes = await reviewsApi.getOpinions(reviewId.value)
+    const opinionsRes: any = await reviewsApi.getOpinions(reviewId.value)
     opinions.value = opinionsRes || []
   } catch {
     ElMessage.error('获取审查详情失败')

@@ -115,13 +115,13 @@
         <el-table-column prop="title" label="合同名称" min-width="200" />
         <el-table-column prop="contract_type" label="类型" width="120">
           <template #default="{ row }">
-            <el-tag size="small">{{ contractTypeLabels[row.contract_type] || row.contract_type }}</el-tag>
+            <el-tag size="small">{{ (contractTypeLabels as any)[row.contract_type] || row.contract_type }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="contractStatusColors[row.status]" size="small">
-              {{ contractStatusLabels[row.status] || row.status }}
+            <el-tag :type="(contractStatusColors as any)[row.status]" size="small">
+              {{ (contractStatusLabels as any)[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>

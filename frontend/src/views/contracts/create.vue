@@ -164,13 +164,14 @@ import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
+// @ts-ignore - used in template ref
 const uploadRef = ref()
 const loading = ref(false)
 const fileList = ref<File[]>([])
 
 const form = reactive({
   title: '',
-  contract_type: '',
+  contract_type: '' as string,
   party_a: '',
   party_b: '',
   amount: undefined as number | undefined,
@@ -194,13 +195,30 @@ const handleFileChange = (file: UploadFile) => {
   }
 }
 
+const buildFormData = () => {
+  return {
+    title: form.title,
+    contract_type: form.contract_type as string,
+    party_a: form.party_a || null,
+    party_b: form.party_b || null,
+    amount: form.amount ?? null,
+    currency: form.currency,
+    sign_date: form.sign_date || null,
+    effective_date: form.effective_date || null,
+    expiry_date: form.expiry_date || null,
+    department: form.department || null,
+    project_name: form.project_name || null,
+    description: form.description || null,
+  }
+}
+
 const handleSubmit = async () => {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   
   loading.value = true
   try {
-    await contractsApi.create(form)
+    await contractsApi.create(buildFormData() as any)
     ElMessage.success('合同创建成功')
     router.push('/contracts/list')
   } catch {
@@ -216,7 +234,7 @@ const handleSubmitAndReview = async () => {
   
   loading.value = true
   try {
-    const res = await contractsApi.create(form)
+    const res: any = await contractsApi.create(buildFormData() as any)
     await contractsApi.submit(res.id)
     ElMessage.success('合同已提交审查')
     router.push('/contracts/list')

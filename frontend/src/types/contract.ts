@@ -31,9 +31,11 @@ export type ContractType =
   | 'outsourcing'
   | 'equipment'
   | 'lease'
-  | 'service'
-  | 'labor'
+  | 'power_supply'
   | 'nda'
+  | 'service'
+  | 'construction'
+  | 'labor'
   | 'other'
 
 export type ContractStatus = 
@@ -77,7 +79,9 @@ export const contractTypeLabels: Record<ContractType, string> = {
   outsourcing: '外包合同',
   equipment: '设备合同',
   lease: '租赁合同',
+  power_supply: '转供电合同',
   service: '服务合同',
+  construction: '工程合同',
   labor: '劳动合同',
   nda: '保密协议',
   other: '其他',

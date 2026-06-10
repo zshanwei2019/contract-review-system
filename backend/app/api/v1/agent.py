@@ -601,3 +601,53 @@ async def test_ai_connection(
                 return {"status": "error", "error": f"API返回状态码: {response.status_code}"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+@router.put("/ai-config")
+async def update_ai_config(
+    config: dict,
+    current_user: User = Depends(require_role("admin", "superadmin")),
+):
+    """更新AI配置（仅管理员）"""
+    import os
+    from pathlib import Path
+    
+    # 读取现有的 .env 文件
+    env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    env_content = ""
+    if env_path.exists():
+        with open(env_path, "r") as f:
+            env_content = f.read()
+    
+    # 更新配置
+    updates = {
+        "OPENAI_API_KEY": config.get("api_key", ""),
+        "OPENAI_BASE_URL": config.get("base_url", "https://api.openai.com/v1"),
+        "LLM_MODEL": config.get("model", "gpt-4-turbo-preview"),
+    }
+    
+    for key, value in updates.items():
+        if f"{key}=" in env_content:
+            # 替换现有的配置项
+            import re
+            env_content = re.sub(
+                f"^{key}=.*$",
+                f"{key}={value}",
+                env_content,
+                flags=re.MULTILINE
+            )
+        else:
+            # 添加新的配置项
+            env_content += f"\n{key}={value}"
+    
+    # 写入 .env 文件
+    with open(env_path, "w") as f:
+        f.write(env_content)
+    
+    # 重新加载配置
+    from app.core.config import settings
+    settings.OPENAI_API_KEY = updates["OPENAI_API_KEY"]
+    settings.OPENAI_BASE_URL = updates["OPENAI_BASE_URL"]
+    settings.LLM_MODEL = updates["LLM_MODEL"]
+    
+    return {"message": "AI配置已更新", "status": "ok"}

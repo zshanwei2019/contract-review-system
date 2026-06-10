@@ -100,7 +100,7 @@ const fetchItems = async () => {
     if (searchForm.risk_level) params.risk_level = searchForm.risk_level
     if (searchForm.is_resolved !== undefined) params.is_resolved = searchForm.is_resolved
     
-    const res = await risksApi.getItems(params)
+    const res: any = await risksApi.getItems(params)
     items.value = res.items || []
     pagination.total = res.total || 0
   } catch { ElMessage.error('获取风险项失败') } finally { loading.value = false }

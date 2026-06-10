@@ -39,6 +39,17 @@ export const contractsApi = {
     return request.get(`/contracts/${id}/versions`)
   },
 
+  // 获取修改建议
+  getModificationSuggestions(contractId: number, reviewTaskId?: number) {
+    const params = reviewTaskId ? `?review_task_id=${reviewTaskId}` : ''
+    return request.post(`/contracts/${contractId}/modification-suggestions${params}`)
+  },
+
+  // 应用修改建议
+  applyModifications(contractId: number, suggestionIds: string[]) {
+    return request.post(`/contracts/${contractId}/apply-modifications`, suggestionIds)
+  },
+
   getFiles(id: number) {
     return request.get(`/contracts/${id}/files`)
   },

@@ -308,6 +308,33 @@ def _mock_review(contract_data: dict) -> dict:
         })
         risk_score += 10
     
+    # 检查违约责任
+    description = contract_data.get("description", "") + " " + (contract_data.get("key_terms", "") or "")
+    if "违约" not in description and "责任" not in description:
+        findings.append({
+            "category": "违约责任",
+            "risk_level": "high",
+            "title": "违约责任条款缺失",
+            "description": "合同未明确违约责任，可能导致违约后无法有效追责。",
+            "suggestion": "建议明确违约责任条款，包括违约金计算方式、赔偿范围和上限。",
+            "clause_reference": "违约责任条款",
+            "legal_basis": "《民法典》第五百七十七条、第五百八十五条",
+        })
+        risk_score += 20
+    
+    # 检查争议解决
+    if "仲裁" not in description and "法院" not in description and "诉讼" not in description:
+        findings.append({
+            "category": "争议解决",
+            "risk_level": "medium",
+            "title": "争议解决条款缺失",
+            "description": "合同未明确争议解决方式，可能导致争议发生时无法有效解决。",
+            "suggestion": "建议明确争议解决方式和管辖法院/仲裁机构。",
+            "clause_reference": "争议解决条款",
+            "legal_basis": "《民事诉讼法》第三十四条",
+        })
+        risk_score += 15
+    
     # 如果没有发现问题
     if not findings:
         findings.append({

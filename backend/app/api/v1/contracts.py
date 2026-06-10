@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from typing import Optional
+from typing import Optional, List
+from dataclasses import asdict
 import os
 import uuid
 import json
@@ -406,3 +407,242 @@ async def ai_review_contract(
         "summary": ai_result["summary"],
         "findings_count": len(ai_result.get("findings", [])),
     }
+
+
+@router.post("/{contract_id}/modification-suggestions")
+async def get_modification_suggestions(
+    contract_id: int,
+    review_task_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取合同修改建议"""
+    from app.services.contract_modifier import contract_modifier
+    
+    # 验证合同存在
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="合同不存在",
+        )
+    
+    try:
+        suggestions = await contract_modifier.generate_modification_suggestions(
+            db, contract_id, review_task_id
+        )
+        return {
+            "contract_id": contract_id,
+            "suggestions": [asdict(s) for s in suggestions],
+            "total": len(suggestions)
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"生成修改建议失败: {str(e)}"
+        )
+
+
+@router.post("/{contract_id}/apply-modifications")
+async def apply_modifications(
+    contract_id: int,
+    suggestion_ids: List[str],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """应用修改建议"""
+    from app.services.contract_modifier import contract_modifier
+    
+    # 验证合同存在
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="合同不存在",
+        )
+    
+    try:
+        result = await contract_modifier.apply_modification(
+            db, contract_id, suggestion_ids, current_user.id
+        )
+        return {
+            "message": f"已应用 {result.applied_count} 个修改建议",
+            "applied_count": result.applied_count,
+            "total_suggestions": result.total_suggestions,
+            "version_id": result.version_id
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"应用修改建议失败: {str(e)}"
+        )
+
+
+@router.get("/{contract_id}/versions")
+async def get_contract_versions(
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取合同版本历史"""
+    # 验证合同存在
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="合同不存在",
+        )
+    
+    result = await db.execute(
+        select(ContractVersion)
+        .where(ContractVersion.contract_id == contract_id)
+        .order_by(ContractVersion.version_no.desc())
+    )
+    versions = result.scalars().all()
+    
+    return {
+        "contract_id": contract_id,
+        "versions": [
+            {
+                "id": v.id,
+                "version_no": v.version_no,
+                "change_summary": v.change_summary,
+                "created_at": v.created_at.isoformat() if v.created_at else None
+            }
+            for v in versions
+        ]
+    }
+
+
+@router.get("/{contract_id}/versions/compare")
+async def compare_versions(
+    contract_id: int,
+    version1_id: int = Query(..., description="版本1 ID"),
+    version2_id: int = Query(..., description="版本2 ID"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """对比两个版本的差异"""
+    from app.services.contract_modifier import version_comparer
+    
+    try:
+        result = await version_comparer.compare_versions(
+            db, contract_id, version1_id, version2_id
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"版本对比失败: {str(e)}"
+        )
+
+
+@router.post("/batch-review")
+async def batch_review_contracts(
+    contract_ids: List[int],
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量审查合同"""
+    # 验证合同存在
+    for contract_id in contract_ids:
+        contract = await db.get(Contract, contract_id)
+        if not contract:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"合同 {contract_id} 不存在",
+            )
+    
+    # 启动后台任务
+    background_tasks.add_task(
+        _batch_review_task,
+        contract_ids,
+        current_user.id
+    )
+    
+    return {
+        "message": f"已启动批量审查任务，共 {len(contract_ids)} 个合同",
+        "contract_ids": contract_ids,
+        "status": "processing"
+    }
+
+
+async def _batch_review_task(contract_ids: List[int], user_id: int):
+    """批量审查后台任务"""
+    from app.core.database import AsyncSessionLocal
+    
+    async with AsyncSessionLocal() as db:
+        for contract_id in contract_ids:
+            try:
+                # 获取合同
+                contract = await db.get(Contract, contract_id)
+                if not contract:
+                    continue
+                
+                # 构建合同数据
+                contract_data = {
+                    "title": contract.title,
+                    "contract_type": contract.contract_type.value if contract.contract_type else "other",
+                    "party_a": contract.party_a,
+                    "party_b": contract.party_b,
+                    "amount": float(contract.amount) if contract.amount else None,
+                    "currency": contract.currency,
+                    "description": contract.description,
+                    "key_terms": contract.key_terms,
+                    "special_terms": contract.special_terms,
+                }
+                
+                # 提取文件内容
+                file_content = None
+                if contract.file_path:
+                    file_content = extract_file_content(contract.file_path)
+                
+                # AI审查
+                ai_result = await review_contract_with_ai(contract_data, file_content)
+                
+                # 更新合同
+                contract.risk_level = ai_result["risk_level"]
+                contract.risk_score = ai_result["risk_score"]
+                contract.risk_summary = ai_result["summary"]
+                
+                # 创建审查任务
+                review_task = ReviewTask(
+                    contract_id=contract.id,
+                    reviewer_id=user_id,
+                    assigned_by=user_id,
+                    status=ReviewTaskStatus.COMPLETED,
+                    risk_level=ai_result["risk_level"],
+                    risk_score=ai_result["risk_score"],
+                    summary=ai_result["summary"],
+                    review_opinion=ai_result["summary"],
+                    started_at=datetime.utcnow(),
+                    completed_at=datetime.utcnow(),
+                )
+                db.add(review_task)
+                await db.flush()
+                
+                # 创建审查意见
+                for finding in ai_result.get("findings", []):
+                    opinion = ReviewOpinion(
+                        review_task_id=review_task.id,
+                        reviewer_id=user_id,
+                        opinion_type=finding.get("category", "risk"),
+                        content=f"**{finding.get('title', '')}**\n\n{finding.get('description', '')}",
+                        suggestion=finding.get("suggestion"),
+                        risk_level=finding.get("risk_level"),
+                        clause_reference=finding.get("clause_reference"),
+                        legal_basis=finding.get("legal_basis"),
+                    )
+                    db.add(opinion)
+                
+                # 更新状态
+                contract.status = ContractStatus.REVIEWED
+                contract.reviewed_at = datetime.utcnow()
+                contract.reviewer_id = user_id
+                
+                await db.commit()
+                
+            except Exception as e:
+                print(f"批量审查合同 {contract_id} 失败: {e}")
+                continue

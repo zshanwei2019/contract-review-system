@@ -32,6 +32,6 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm')
 
 onMounted(async () => {
   loading.value = true
-  try { instances.value = await workflowsApi.getDefinitions() || [] } catch {} finally { loading.value = false }
+  try { instances.value = (await workflowsApi.getDefinitions() as any) || [] } catch {} finally { loading.value = false }
 })
 </script>

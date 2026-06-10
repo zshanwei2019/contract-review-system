@@ -49,7 +49,7 @@ const formatDate = (d: string) => dayjs(d).format('YYYY-MM-DD HH:mm')
 
 const fetchNotifications = async () => {
   loading.value = true
-  try { const res = await notificationsApi.list({}); notifications.value = res.items || [] } catch {} finally { loading.value = false }
+  try { const res: any = await notificationsApi.list({}); notifications.value = res.items || [] } catch {} finally { loading.value = false }
 }
 
 const handleMarkRead = async (row: any) => {

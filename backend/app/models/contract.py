@@ -9,13 +9,14 @@ from app.core.database import Base
 class ContractType(str, enum.Enum):
     PROCUREMENT = "procurement"  # 采购合同
     SALES = "sales"  # 销售合同
-    OUTSOURCING = "outsourcing"  # 外协合同
+    OUTSOURCING = "outsourcing"  # 外协/外包合同
     EQUIPMENT = "equipment"  # 设备合同
     LEASE = "lease"  # 租赁合同
     POWER_SUPPLY = "power_supply"  # 转供电合同
     NDA = "nda"  # 保密协议
     SERVICE = "service"  # 服务合同
     CONSTRUCTION = "construction"  # 工程合同
+    LABOR = "labor"  # 劳动合同
     OTHER = "other"  # 其他
 
 

@@ -27,6 +27,6 @@ const definitions = ref<any[]>([])
 
 onMounted(async () => {
   loading.value = true
-  try { definitions.value = await workflowsApi.getDefinitions() || [] } catch {} finally { loading.value = false }
+  try { definitions.value = (await workflowsApi.getDefinitions() as any) || [] } catch {} finally { loading.value = false }
 })
 </script>

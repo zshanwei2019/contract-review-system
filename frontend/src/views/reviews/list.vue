@@ -148,7 +148,7 @@ const fetchReviews = async () => {
     if (searchForm.status) params.status = searchForm.status
     if (searchForm.contract_id) params.contract_id = searchForm.contract_id
     
-    const res = await reviewsApi.list(params)
+    const res: any = await reviewsApi.list(params)
     reviews.value = res.items || []
     pagination.total = res.total || 0
   } catch {

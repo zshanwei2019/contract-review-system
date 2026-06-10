@@ -80,7 +80,7 @@ const getRiskLabel = (level: string) => ({ high: '高风险', medium: '中风险
 const fetchData = async () => {
   loading.value = true
   try {
-    const [rulesRes, catsRes] = await Promise.all([risksApi.getRules({}), risksApi.getCategories()])
+    const [rulesRes, catsRes]: any[] = await Promise.all([risksApi.getRules({}), risksApi.getCategories()])
     rules.value = rulesRes.items || []
     categories.value = catsRes || []
   } catch {} finally { loading.value = false }

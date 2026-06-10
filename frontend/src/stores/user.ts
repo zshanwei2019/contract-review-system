@@ -10,7 +10,7 @@ export const useUserStore = defineStore('user', () => {
   const roles = ref<string[]>([])
 
   async function login(username: string, password: string) {
-    const res = await authApi.login({ username, password })
+    const res: any = await authApi.login({ username, password })
     token.value = res.access_token
     refreshToken.value = res.refresh_token
     localStorage.setItem('token', res.access_token)
@@ -19,7 +19,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function getUserInfo() {
-    const res = await authApi.getCurrentUser()
+    const res: any = await authApi.getCurrentUser()
     userInfo.value = res
     roles.value = res.roles?.map((r: any) => r.code) || []
     return res

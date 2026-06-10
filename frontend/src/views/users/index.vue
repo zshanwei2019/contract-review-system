@@ -81,7 +81,7 @@ const fetchUsers = async () => {
     }
     if (searchForm.keyword) params.keyword = searchForm.keyword
     
-    const res = await usersApi.list(params)
+    const res: any = await usersApi.list(params)
     users.value = res.items || []
     pagination.total = res.total || 0
   } catch {} finally { loading.value = false }

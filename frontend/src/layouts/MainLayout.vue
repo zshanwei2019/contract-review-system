@@ -158,7 +158,7 @@ const getVisibleChildren = (route: any) => {
 // 获取未读通知数
 const getUnreadCount = async () => {
   try {
-    const res = await notificationsApi.getCount()
+    const res: any = await notificationsApi.getCount()
     unreadCount.value = res.unread || 0
   } catch {}
 }
@@ -196,7 +196,21 @@ onMounted(() => {
 .sidebar {
   background: #001529;
   transition: width 0.3s;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .logo {
@@ -223,10 +237,26 @@ onMounted(() => {
 
 .sidebar-menu {
   border-right: none;
+  min-height: calc(100vh - 64px);
 }
 
 .sidebar-menu:not(.el-menu--collapse) {
   width: 220px;
+}
+
+.sidebar-menu .el-sub-menu__title,
+.sidebar-menu .el-menu-item {
+  height: 50px;
+  line-height: 50px;
+}
+
+.sidebar-menu .el-menu--inline {
+  background: #000c17 !important;
+}
+
+.sidebar-menu .el-menu--inline .el-menu-item {
+  padding-left: 56px !important;
+  min-width: auto;
 }
 
 .main-container {

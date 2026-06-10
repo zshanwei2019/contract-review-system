@@ -46,9 +46,14 @@
       <template #header>
         <div class="card-header">
           <span>⚙️ AI配置</span>
-          <el-button type="primary" @click="testAIConnection" :loading="testing">
-            测试AI连接
-          </el-button>
+          <div>
+            <el-button type="primary" @click="showAIConfigDialog = true">
+              配置AI
+            </el-button>
+            <el-button @click="testAIConnection" :loading="testing">
+              测试连接
+            </el-button>
+          </div>
         </div>
       </template>
       <el-descriptions :column="2" border>
@@ -62,6 +67,27 @@
         </el-descriptions-item>
       </el-descriptions>
     </el-card>
+
+    <!-- AI配置弹窗 -->
+    <el-dialog v-model="showAIConfigDialog" title="AI配置" width="500px">
+      <el-form :model="aiConfigForm" label-width="100px">
+        <el-form-item label="API地址">
+          <el-input v-model="aiConfigForm.base_url" placeholder="https://api.openai.com/v1" />
+        </el-form-item>
+        <el-form-item label="模型">
+          <el-input v-model="aiConfigForm.model" placeholder="gpt-4-turbo-preview" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="aiConfigForm.api_key" type="password" show-password placeholder="sk-..." />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAIConfigDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveAIConfig" :loading="saving">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Agent列表 -->
     <el-card shadow="hover" class="section-card">
@@ -135,7 +161,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { agentApi } from '@/api/agent'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+
+const userStore = useUserStore()
 
 const alerts = ref<any>({})
 const agents = ref<any[]>([])
@@ -143,26 +172,24 @@ const knowledgeItems = ref<any[]>([])
 const knowledgeType = ref('laws')
 const correctionStats = ref<any>({})
 const testing = ref(false)
+const saving = ref(false)
+const showAIConfigDialog = ref(false)
 const aiConfig = ref<any>({
   base_url: '',
   model: '',
   has_key: false,
   status: 'unknown'
 })
+const aiConfigForm = ref({
+  base_url: 'https://api.openai.com/v1',
+  model: 'gpt-4-turbo-preview',
+  api_key: ''
+})
 
 // 检查是否为管理员
-const isAdmin = ref(false)
-const checkAdminRole = async () => {
-  try {
-    const userStr = localStorage.getItem('user') || sessionStorage.getItem('user')
-    if (userStr) {
-      const user = JSON.parse(userStr)
-      isAdmin.value = user.is_superuser || (user.roles && user.roles.includes('admin'))
-    }
-  } catch {
-    isAdmin.value = false
-  }
-}
+const isAdmin = computed(() => {
+  return (userStore.userInfo as any)?.is_superuser || userStore.hasRole('admin')
+})
 
 const learningRate = computed(() => {
   const total = correctionStats.value.total_corrections || 0
@@ -172,7 +199,7 @@ const learningRate = computed(() => {
 
 const refreshAlerts = async () => {
   try {
-    alerts.value = await agentApi.getMonitoringAlerts()
+    alerts.value = await agentApi.getMonitoringAlerts() as any
   } catch {
     ElMessage.error('获取监控数据失败')
   }
@@ -180,7 +207,7 @@ const refreshAlerts = async () => {
 
 const loadAgents = async () => {
   try {
-    const res = await agentApi.listAgents()
+    const res: any = await agentApi.listAgents()
     agents.value = res.agents || []
   } catch {
     // ignore
@@ -190,10 +217,10 @@ const loadAgents = async () => {
 const loadKnowledge = async () => {
   try {
     if (knowledgeType.value === 'laws') {
-      const res = await agentApi.getLaws()
+      const res: any = await agentApi.getLaws()
       knowledgeItems.value = res.items || []
     } else {
-      const res = await agentApi.getCompliance()
+      const res: any = await agentApi.getCompliance()
       knowledgeItems.value = res.items || []
     }
   } catch {
@@ -205,7 +232,7 @@ const initKnowledge = async () => {
   try {
     await agentApi.initKnowledge()
     ElMessage.success('知识库初始化成功')
-    loadKnowledge()
+    await loadKnowledge()
   } catch {
     ElMessage.error('初始化失败')
   }
@@ -221,8 +248,10 @@ const loadStats = async () => {
 
 const loadAIConfig = async () => {
   try {
-    const res = await agentApi.getAIConfig()
+    const res: any = await agentApi.getAIConfig()
     aiConfig.value = res
+    aiConfigForm.value.base_url = res.base_url || 'https://api.openai.com/v1'
+    aiConfigForm.value.model = res.model || 'gpt-4-turbo-preview'
   } catch {
     // ignore
   }
@@ -231,7 +260,7 @@ const loadAIConfig = async () => {
 const testAIConnection = async () => {
   testing.value = true
   try {
-    const res = await agentApi.testAIConnection()
+    const res: any = await agentApi.testAIConnection()
     if (res.status === 'ok') {
       ElMessage.success('AI连接测试成功')
       aiConfig.value.status = 'ok'
@@ -247,8 +276,21 @@ const testAIConnection = async () => {
   }
 }
 
+const saveAIConfig = async () => {
+  saving.value = true
+  try {
+    await agentApi.updateAIConfig(aiConfigForm.value)
+    ElMessage.success('AI配置保存成功')
+    showAIConfigDialog.value = false
+    loadAIConfig()
+  } catch (error: any) {
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(() => {
-  checkAdminRole()
   refreshAlerts()
   loadAgents()
   loadKnowledge()
