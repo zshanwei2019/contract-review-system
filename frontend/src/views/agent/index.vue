@@ -41,6 +41,28 @@
       />
     </el-card>
 
+    <!-- AI配置测试（仅管理员可见） -->
+    <el-card v-if="isAdmin" shadow="hover" class="section-card">
+      <template #header>
+        <div class="card-header">
+          <span>⚙️ AI配置</span>
+          <el-button type="primary" @click="testAIConnection" :loading="testing">
+            测试AI连接
+          </el-button>
+        </div>
+      </template>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="API地址">{{ aiConfig.base_url || '未配置' }}</el-descriptions-item>
+        <el-descriptions-item label="模型">{{ aiConfig.model || '未配置' }}</el-descriptions-item>
+        <el-descriptions-item label="API Key">{{ aiConfig.has_key ? '已配置' : '未配置' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="aiConfig.status === 'ok' ? 'success' : 'danger'">
+            {{ aiConfig.status === 'ok' ? '正常' : '未连接' }}
+          </el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-card>
+
     <!-- Agent列表 -->
     <el-card shadow="hover" class="section-card">
       <template #header>
@@ -120,6 +142,27 @@ const agents = ref<any[]>([])
 const knowledgeItems = ref<any[]>([])
 const knowledgeType = ref('laws')
 const correctionStats = ref<any>({})
+const testing = ref(false)
+const aiConfig = ref<any>({
+  base_url: '',
+  model: '',
+  has_key: false,
+  status: 'unknown'
+})
+
+// 检查是否为管理员
+const isAdmin = ref(false)
+const checkAdminRole = async () => {
+  try {
+    const userStr = localStorage.getItem('user') || sessionStorage.getItem('user')
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      isAdmin.value = user.is_superuser || (user.roles && user.roles.includes('admin'))
+    }
+  } catch {
+    isAdmin.value = false
+  }
+}
 
 const learningRate = computed(() => {
   const total = correctionStats.value.total_corrections || 0
@@ -176,11 +219,43 @@ const loadStats = async () => {
   }
 }
 
+const loadAIConfig = async () => {
+  try {
+    const res = await agentApi.getAIConfig()
+    aiConfig.value = res
+  } catch {
+    // ignore
+  }
+}
+
+const testAIConnection = async () => {
+  testing.value = true
+  try {
+    const res = await agentApi.testAIConnection()
+    if (res.status === 'ok') {
+      ElMessage.success('AI连接测试成功')
+      aiConfig.value.status = 'ok'
+    } else {
+      ElMessage.error('AI连接测试失败: ' + (res.error || '未知错误'))
+      aiConfig.value.status = 'error'
+    }
+  } catch (error: any) {
+    ElMessage.error('AI连接测试失败: ' + (error.message || '网络错误'))
+    aiConfig.value.status = 'error'
+  } finally {
+    testing.value = false
+  }
+}
+
 onMounted(() => {
+  checkAdminRole()
   refreshAlerts()
   loadAgents()
   loadKnowledge()
   loadStats()
+  if (isAdmin.value) {
+    loadAIConfig()
+  }
 })
 </script>
 

@@ -559,3 +559,45 @@ async def list_agents(
             for k, v in AGENT_ROLES.items()
         ]
     }
+
+
+@router.get("/ai-config")
+async def get_ai_config(
+    current_user: User = Depends(require_role("admin", "superadmin")),
+):
+    """获取AI配置信息（仅管理员）"""
+    from app.core.config import settings
+    return {
+        "base_url": settings.OPENAI_BASE_URL or "https://api.openai.com/v1",
+        "model": settings.LLM_MODEL,
+        "has_key": bool(settings.OPENAI_API_KEY),
+        "status": "unknown"
+    }
+
+
+@router.post("/test-ai-connection")
+async def test_ai_connection(
+    current_user: User = Depends(require_role("admin", "superadmin")),
+):
+    """测试AI连接（仅管理员）"""
+    from app.core.config import settings
+    
+    if not settings.OPENAI_API_KEY:
+        return {
+            "status": "error",
+            "error": "未配置 OPENAI_API_KEY"
+        }
+    
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.OPENAI_BASE_URL or 'https://api.openai.com/v1'}/models",
+                headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+            )
+            if response.status_code == 200:
+                return {"status": "ok", "message": "AI连接正常"}
+            else:
+                return {"status": "error", "error": f"API返回状态码: {response.status_code}"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}

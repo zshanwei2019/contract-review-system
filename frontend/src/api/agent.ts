@@ -114,4 +114,13 @@ export const agentApi = {
   getCorrectionStats() {
     return request.get('/agent/corrections/stats')
   },
+
+  // ==================== AI配置 ====================
+  getAIConfig() {
+    return request.get('/agent/ai-config')
+  },
+
+  testAIConnection() {
+    return request.post('/agent/test-ai-connection')
+  },
 }
