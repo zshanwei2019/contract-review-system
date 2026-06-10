@@ -27,6 +27,14 @@
             >
               开始审查
             </el-button>
+            <el-button
+              type="warning"
+              icon="MagicStick"
+              :loading="aiReviewing"
+              @click="handleAiReview"
+            >
+              AI智能审查
+            </el-button>
           </div>
         </div>
       </template>
@@ -115,6 +123,39 @@
         <el-empty v-else description="暂无版本记录" />
       </div>
     </el-card>
+    
+    <!-- AI审查结果对话框 -->
+    <el-dialog v-model="showAiResult" title="AI智能审查结果" width="700px">
+      <div v-if="aiResult.risk_level">
+        <el-alert
+          :title="`风险等级: ${getRiskLabel(aiResult.risk_level)}`
+          :description="aiResult.summary"
+          :type="aiResult.risk_level === 'high' ? 'error' : aiResult.risk_level === 'medium' ? 'warning' : 'success'"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 20px"
+        />
+        
+        <el-row :gutter="20" style="margin-bottom: 20px">
+          <el-col :span="12">
+            <el-statistic title="风险评分" :value="aiResult.risk_score" suffix="/ 100" />
+          </el-col>
+          <el-col :span="12">
+            <el-statistic title="发现项数" :value="aiResult.findings_count" suffix="项" />
+          </el-col>
+        </el-row>
+        
+        <p style="color: #666; margin: 0;">
+          审查意见已自动生成，可在「审查记录」中查看详细内容。
+        </p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="router.push(`/reviews/${aiResult.review_task_id}`)">
+          查看审查详情
+        </el-button>
+        <el-button @click="showAiResult = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -130,9 +171,12 @@ import dayjs from 'dayjs'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const aiReviewing = ref(false)
 const contract = ref<any>({})
 const reviews = ref<any[]>([])
 const versions = ref<any[]>([])
+const showAiResult = ref(false)
+const aiResult = ref<any>({})
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -170,6 +214,31 @@ const handleSubmit = async () => {
 
 const handleReview = () => {
   router.push(`/reviews/list?contract_id=${contractId.value}`)
+}
+
+const handleAiReview = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'AI将对合同进行智能风险审查，是否继续？',
+      'AI智能审查',
+      { confirmButtonText: '开始审查', cancelButtonText: '取消', type: 'info' }
+    )
+  } catch {
+    return
+  }
+  
+  aiReviewing.value = true
+  try {
+    const result = await contractsApi.aiReview(contractId.value)
+    aiResult.value = result
+    showAiResult.value = true
+    ElMessage.success('AI审查完成')
+    fetchContract()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || 'AI审查失败，请稍后重试')
+  } finally {
+    aiReviewing.value = false
+  }
 }
 
 const formatAmount = (amount: number) => {

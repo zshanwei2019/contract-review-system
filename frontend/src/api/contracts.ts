@@ -42,4 +42,8 @@ export const contractsApi = {
   getFiles(id: number) {
     return request.get(`/contracts/${id}/files`)
   },
+
+  aiReview(id: number) {
+    return request.post(`/contracts/${id}/ai-review`)
+  },
 }
