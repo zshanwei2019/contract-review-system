@@ -35,6 +35,19 @@
             >
               AI智能审查
             </el-button>
+            <el-dropdown trigger="click" @command="handleAgentReview">
+              <el-button type="primary" plain icon="Connection">
+                多Agent审查 <el-icon><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="all">全部Agent</el-dropdown-item>
+                  <el-dropdown-item command="legal">⚖️ 法务审查</el-dropdown-item>
+                  <el-dropdown-item command="finance">💰 财务审查</el-dropdown-item>
+                  <el-dropdown-item command="business">📋 业务审查</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </template>
@@ -164,6 +177,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
+import { agentApi } from '@/api/agent'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -236,6 +250,40 @@ const handleAiReview = async () => {
     fetchContract()
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || 'AI审查失败，请稍后重试')
+  } finally {
+    aiReviewing.value = false
+  }
+}
+
+const handleAgentReview = async (command: string) => {
+  const agents = command === 'all' ? undefined : [command]
+  const label = command === 'all' ? '全部Agent' : { legal: '法务', finance: '财务', business: '业务' }[command]
+  
+  try {
+    await ElMessageBox.confirm(
+      `将使用${label}Agent对合同进行协作审查，是否继续？`,
+      '多Agent审查',
+      { confirmButtonText: '开始', cancelButtonText: '取消', type: 'info' }
+    )
+  } catch {
+    return
+  }
+  
+  aiReviewing.value = true
+  try {
+    const result = await agentApi.multiAgentReview(contractId.value, agents)
+    aiResult.value = {
+      review_task_id: result.review_task_id,
+      risk_level: result.merged_result?.risk_level,
+      risk_score: result.merged_result?.risk_score,
+      summary: result.merged_result?.summary,
+      findings_count: result.merged_result?.total_findings,
+    }
+    showAiResult.value = true
+    ElMessage.success('多Agent审查完成')
+    fetchContract()
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '多Agent审查失败')
   } finally {
     aiReviewing.value = false
   }

@@ -147,6 +147,7 @@ def _parse_ai_response(response_text: str) -> dict:
 async def review_contract_with_ai(
     contract_data: dict,
     file_content: Optional[str] = None,
+    system_prompt_override: Optional[str] = None,
 ) -> dict:
     """
     使用AI对合同进行智能审查
@@ -168,6 +169,8 @@ async def review_contract_with_ai(
         
         prompt = _build_review_prompt(contract_data, file_content)
         
+        system_prompt = system_prompt_override or REVIEW_SYSTEM_PROMPT
+        
         api_base = settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
         headers = {
             "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
@@ -176,7 +179,7 @@ async def review_contract_with_ai(
         payload = {
             "model": settings.LLM_MODEL,
             "messages": [
-                {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.3,

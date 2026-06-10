@@ -27,6 +27,14 @@
             >
               完成审查
             </el-button>
+            <el-button
+              v-if="review.status === 'completed'"
+              type="warning"
+              icon="Star"
+              @click="showRatingDialog = true"
+            >
+              评价审查
+            </el-button>
           </div>
         </div>
       </template>
@@ -101,6 +109,15 @@
                   <span v-if="opinion.clause_reference">条款引用：{{ opinion.clause_reference }}</span>
                   <span v-if="opinion.legal_basis">法律依据：{{ opinion.legal_basis }}</span>
                 </div>
+                <el-button
+                  text
+                  type="warning"
+                  size="small"
+                  @click="openCorrection(opinion)"
+                  style="margin-top: 8px"
+                >
+                  📝 提交修正
+                </el-button>
               </div>
             </el-card>
           </el-timeline-item>
@@ -168,6 +185,48 @@
         <el-button type="primary" :loading="submitting" @click="handleComplete">确定</el-button>
       </template>
     </el-dialog>
+    
+    <!-- 评价审查对话框 -->
+    <el-dialog v-model="showRatingDialog" title="评价审查质量" width="500px">
+      <el-form :model="ratingForm" label-width="100px">
+        <el-form-item label="评分">
+          <el-rate v-model="ratingForm.rating" :max="5" show-score />
+        </el-form-item>
+        <el-form-item label="评语">
+          <el-input v-model="ratingForm.comment" type="textarea" :rows="3" placeholder="请输入评语（可选）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRatingDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleRating">提交评价</el-button>
+      </template>
+    </el-dialog>
+    
+    <!-- 修正意见对话框 -->
+    <el-dialog v-model="showCorrectionDialog" title="提交修正意见" width="600px">
+      <el-form :model="correctionForm" label-width="100px">
+        <el-form-item label="原始意见">
+          <el-input :model-value="selectedOpinion?.content" type="textarea" :rows="3" disabled />
+        </el-form-item>
+        <el-form-item label="修正类型">
+          <el-select v-model="correctionForm.correction_type" style="width: 100%">
+            <el-option label="修改内容" value="modify" />
+            <el-option label="删除该意见" value="delete" />
+            <el-option label="补充新增" value="add" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="修正内容" required>
+          <el-input v-model="correctionForm.corrected_opinion" type="textarea" :rows="4" placeholder="请输入修正后的意见" />
+        </el-form-item>
+        <el-form-item label="修正原因" required>
+          <el-input v-model="correctionForm.correction_reason" type="textarea" :rows="3" placeholder="请说明修正原因，帮助AI学习改进" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCorrectionDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleCorrection">提交修正</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -175,6 +234,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { reviewsApi } from '@/api/reviews'
+import { agentApi } from '@/api/agent'
 import { contractTypeLabels } from '@/types/contract'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
@@ -187,6 +247,9 @@ const review = ref<any>({})
 const opinions = ref<any[]>([])
 const showOpinionDialog = ref(false)
 const showCompleteDialog = ref(false)
+const showRatingDialog = ref(false)
+const showCorrectionDialog = ref(false)
+const selectedOpinion = ref<any>(null)
 
 const reviewId = computed(() => Number(route.params.id))
 
@@ -203,6 +266,17 @@ const completeForm = reactive({
   risk_level: '',
   risk_score: 50,
   summary: '',
+})
+
+const ratingForm = reactive({
+  rating: 4,
+  comment: '',
+})
+
+const correctionForm = reactive({
+  corrected_opinion: '',
+  correction_reason: '',
+  correction_type: 'modify',
 })
 
 const statusLabels: Record<string, string> = {
@@ -304,6 +378,44 @@ const handleComplete = async () => {
     ElMessage.error('操作失败')
   } finally {
     submitting.value = false
+  }
+}
+
+const handleRating = async () => {
+  try {
+    // 先获取案例ID（从审查任务关联）
+    await agentApi.rateCase(review.value.id, ratingForm.rating, ratingForm.comment)
+    ElMessage.success('评价已提交，感谢反馈！')
+    showRatingDialog.value = false
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '评价失败')
+  }
+}
+
+const openCorrection = (opinion: any) => {
+  selectedOpinion.value = opinion
+  correctionForm.corrected_opinion = opinion.content
+  correctionForm.correction_reason = ''
+  showCorrectionDialog.value = true
+}
+
+const handleCorrection = async () => {
+  if (!correctionForm.correction_reason) {
+    ElMessage.warning('请填写修正原因')
+    return
+  }
+  try {
+    await agentApi.submitCorrection({
+      review_case_id: reviewId.value,
+      original_opinion_id: selectedOpinion.value?.id,
+      corrected_opinion: correctionForm.corrected_opinion,
+      correction_reason: correctionForm.correction_reason,
+      correction_type: correctionForm.correction_type,
+    })
+    ElMessage.success('修正已提交，系统将学习此反馈')
+    showCorrectionDialog.value = false
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '提交失败')
   }
 }
 

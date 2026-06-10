@@ -5,6 +5,7 @@ from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowSt
 from app.models.risk import RiskRule, RiskCategory, RiskItem
 from app.models.audit import AuditLog, OperationLog
 from app.models.notification import Notification, NotificationTemplate
+from app.models.memory import ReviewCase, RiskPattern, ContractKnowledge, CorrectionLog, AgentMessage
 
 __all__ = [
     "User", "Role", "Permission", "UserRole", "RolePermission",
@@ -14,4 +15,5 @@ __all__ = [
     "RiskRule", "RiskCategory", "RiskItem",
     "AuditLog", "OperationLog",
     "Notification", "NotificationTemplate",
+    "ReviewCase", "RiskPattern", "ContractKnowledge", "CorrectionLog", "AgentMessage",
 ]

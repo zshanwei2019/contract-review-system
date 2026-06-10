@@ -119,6 +119,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '消息通知', icon: 'Bell', hidden: true },
       },
       {
+        path: 'agent',
+        name: 'Agent',
+        component: () => import('@/views/agent/index.vue'),
+        meta: { title: 'AI智能体', icon: 'MagicStick' },
+      },
+      {
         path: 'profile',
         name: 'Profile',
         component: () => import('@/views/profile/index.vue'),

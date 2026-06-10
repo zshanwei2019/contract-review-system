@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, users, contracts, reviews, workflows, risks, notifications, dashboard
+from app.api.v1 import auth, users, contracts, reviews, workflows, risks, notifications, dashboard, agent
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(workflows.router, prefix="/workflows", tags=["工作�
 api_router.include_router(risks.router, prefix="/risks", tags=["风险管理"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["通知管理"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["仪表盘"])
+api_router.include_router(agent.router, prefix="/agent", tags=["AI智能体"])
