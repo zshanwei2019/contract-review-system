@@ -135,19 +135,20 @@ class ContractModifier:
         
         prompt = self._build_modification_prompt(contract, findings)
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": """你是一位专业的法律顾问，擅长合同条款修改。
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": """你是一位专业的法律顾问，擅长合同条款修改。
 请根据审查发现，为每个问题生成具体的修改建议。
 
 修改建议应该：
@@ -157,19 +158,19 @@ class ContractModifier:
 4. 符合中国法律法规
 
 返回JSON格式的修改建议数组。"""
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4000
-                }
-            )
-            
-            if response.status_code != 200:
-                return self._generate_with_rules(contract, findings)
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 4000
+                    }
+                )
+                
+                if response.status_code != 200:
+                    return self._generate_with_rules(contract, findings)
             
             result = response.json()
             content = result["choices"][0]["message"]["content"]
@@ -180,7 +181,13 @@ class ContractModifier:
                 if json_match:
                     suggestions_data = json.loads(json_match.group())
                 else:
-                    suggestions_data = json.loads(content)
+                    # 尝试清理内容后再解析
+                    clean_content = content.strip()
+                    if clean_content.startswith('```json'):
+                        clean_content = clean_content[7:]
+                    if clean_content.endswith('```'):
+                        clean_content = clean_content[:-3]
+                    suggestions_data = json.loads(clean_content.strip())
                 
                 suggestions = []
                 for i, data in enumerate(suggestions_data):
@@ -202,6 +209,12 @@ class ContractModifier:
                 
             except json.JSONDecodeError:
                 return self._generate_with_rules(contract, findings)
+        except httpx.ReadTimeout:
+            print("AI API调用超时，使用规则引擎生成修改建议")
+            return self._generate_with_rules(contract, findings)
+        except Exception as e:
+            print(f"AI API调用失败: {str(e)}")
+            return self._generate_with_rules(contract, findings)
     
     def _build_modification_prompt(self, contract: Contract, findings: List[Dict]) -> str:
         """构建修改建议提示词"""

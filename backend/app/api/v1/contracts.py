@@ -437,9 +437,11 @@ async def get_modification_suggestions(
             "total": len(suggestions)
         }
     except Exception as e:
+        import traceback
+        print(f"生成修改建议错误: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"生成修改建议失败: {str(e)}"
+            detail=f"生成修改建议失败: {str(e) or '未知错误'}"
         )
 
 
