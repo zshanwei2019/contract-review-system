@@ -521,13 +521,7 @@ async def export_modified_contract(
     )
     latest_version = result.scalar_one_or_none()
     
-    if not latest_version:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该合同没有修改记录"
-        )
-    
-    # 获取审查发现来重新生成修改后内容
+    # 获取审查发现来生成修改后内容
     review_result = await db.execute(
         select(ReviewTask)
         .where(ReviewTask.contract_id == contract_id)
@@ -536,34 +530,33 @@ async def export_modified_contract(
     )
     review_task = review_result.scalar_one_or_none()
     
-    if not review_task:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该合同没有审查记录"
+    # 生成合同内容
+    if review_task:
+        # 获取审查发现
+        findings_result = await db.execute(
+            select(ReviewOpinion)
+            .where(ReviewOpinion.review_task_id == review_task.id)
         )
-    
-    # 获取审查发现
-    findings_result = await db.execute(
-        select(ReviewOpinion)
-        .where(ReviewOpinion.review_task_id == review_task.id)
-    )
-    findings = findings_result.scalars().all()
-    
-    # 生成修改建议
-    findings_list = [{
-        "id": f.id,
-        "clause": f.clause_reference or "",
-        "content": f.content,
-        "risk_level": f.risk_level or "medium",
-        "category": f.opinion_type or "",
-        "suggestion": f.suggestion or ""
-    } for f in findings]
-    suggestions = contract_modifier._generate_with_rules(contract, findings_list)
-    
-    # 生成修改后合同内容
-    modified_content = await contract_modifier.rewrite_contract_with_ai(
-        contract, suggestions
-    )
+        findings = findings_result.scalars().all()
+        
+        # 生成修改建议
+        findings_list = [{
+            "id": f.id,
+            "clause": f.clause_reference or "",
+            "content": f.content,
+            "risk_level": f.risk_level or "medium",
+            "category": f.opinion_type or "",
+            "suggestion": f.suggestion or ""
+        } for f in findings]
+        suggestions = contract_modifier._generate_with_rules(contract, findings_list)
+        
+        # 生成修改后合同内容
+        modified_content = await contract_modifier.rewrite_contract_with_ai(
+            contract, suggestions
+        )
+    else:
+        # 没有审查记录，生成基础合同
+        modified_content = contract_modifier._rewrite_with_rules(contract, [])
     
     if format == "markdown":
         return StreamingResponse(

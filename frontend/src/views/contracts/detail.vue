@@ -57,6 +57,18 @@
             >
               AI修改建议
             </el-button>
+            <el-dropdown trigger="click" @command="handleExportModified">
+              <el-button type="primary" plain icon="Download">
+                导出合同 <el-icon><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="word">📄 导出Word</el-dropdown-item>
+                  <el-dropdown-item command="pdf">📕 导出PDF</el-dropdown-item>
+                  <el-dropdown-item command="markdown">📝 导出Markdown</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </template>
