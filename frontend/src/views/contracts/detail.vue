@@ -329,7 +329,7 @@
         <el-alert
           :title="`合同: ${compareData.contract_title}`"
           :description="compareData.has_modifications ? '已显示原合同与修改后合同的对比' : '该合同尚未进行AI修改'"
-          :type="compareData.has_modifications ? 'success' : 'info""
+          :type="compareData.has_modifications ? 'success' : 'info'"
           :closable="false"
           show-icon
           style="margin-bottom: 16px;"
