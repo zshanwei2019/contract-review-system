@@ -218,7 +218,26 @@ const handleSubmit = async () => {
   
   loading.value = true
   try {
-    await contractsApi.create(buildFormData() as any)
+    const formData = new FormData()
+    formData.append('title', form.title)
+    formData.append('contract_type', form.contract_type)
+    if (form.party_a) formData.append('party_a', form.party_a)
+    if (form.party_b) formData.append('party_b', form.party_b)
+    if (form.amount) formData.append('amount', String(form.amount))
+    formData.append('currency', form.currency)
+    if (form.sign_date) formData.append('sign_date', form.sign_date)
+    if (form.effective_date) formData.append('effective_date', form.effective_date)
+    if (form.expiry_date) formData.append('expiry_date', form.expiry_date)
+    if (form.department) formData.append('department', form.department)
+    if (form.project_name) formData.append('project_name', form.project_name)
+    if (form.description) formData.append('description', form.description)
+    
+    // 上传文件
+    if (fileList.value.length > 0) {
+      formData.append('file', fileList.value[0])
+    }
+    
+    await contractsApi.createWithFile(formData)
     ElMessage.success('合同创建成功')
     router.push('/contracts/list')
   } catch {
@@ -234,7 +253,26 @@ const handleSubmitAndReview = async () => {
   
   loading.value = true
   try {
-    const res: any = await contractsApi.create(buildFormData() as any)
+    const formData = new FormData()
+    formData.append('title', form.title)
+    formData.append('contract_type', form.contract_type)
+    if (form.party_a) formData.append('party_a', form.party_a)
+    if (form.party_b) formData.append('party_b', form.party_b)
+    if (form.amount) formData.append('amount', String(form.amount))
+    formData.append('currency', form.currency)
+    if (form.sign_date) formData.append('sign_date', form.sign_date)
+    if (form.effective_date) formData.append('effective_date', form.effective_date)
+    if (form.expiry_date) formData.append('expiry_date', form.expiry_date)
+    if (form.department) formData.append('department', form.department)
+    if (form.project_name) formData.append('project_name', form.project_name)
+    if (form.description) formData.append('description', form.description)
+    
+    // 上传文件
+    if (fileList.value.length > 0) {
+      formData.append('file', fileList.value[0])
+    }
+    
+    const res: any = await contractsApi.createWithFile(formData)
     await contractsApi.submit(res.id)
     ElMessage.success('合同已提交审查')
     router.push('/contracts/list')

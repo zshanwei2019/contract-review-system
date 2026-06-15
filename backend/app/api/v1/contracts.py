@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -90,33 +90,96 @@ async def list_contracts(
 
 
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ContractResponse)
 async def create_contract(
-    contract_data: ContractCreate,
+    title: str = Form(...),
+    contract_type: ContractType = Form(ContractType.OTHER),
+    party_a: Optional[str] = Form(None),
+    party_b: Optional[str] = Form(None),
+    amount: Optional[float] = Form(None),
+    currency: Optional[str] = Form("CNY"),
+    sign_date: Optional[str] = Form(None),
+    effective_date: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    department: Optional[str] = Form(None),
+    project_name: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """创建合同"""
+    """创建合同（支持同时上传文件）"""
+    # 处理文件上传
+    file_path = None
+    file_name = None
+    file_size = None
+    file_type = None
+    
+    if file:
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in settings.ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的文件格式，支持: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+            )
+        
+        content = await file.read()
+        if len(content) > settings.MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"文件大小超过限制（最大{settings.MAX_FILE_SIZE // 1024 // 1024}MB）",
+            )
+        
+        upload_dir = os.path.join(settings.UPLOAD_DIR, "contracts")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        saved_name = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(upload_dir, saved_name)
+        
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        file_name = file.filename
+        file_size = len(content)
+        file_type = file_ext
+    
     contract = Contract(
         contract_no=generate_contract_no(),
-        title=contract_data.title,
-        contract_type=contract_data.contract_type,
-        party_a=contract_data.party_a,
-        party_b=contract_data.party_b,
-        amount=contract_data.amount,
-        currency=contract_data.currency,
-        sign_date=contract_data.sign_date,
-        effective_date=contract_data.effective_date,
-        expiry_date=contract_data.expiry_date,
-        description=contract_data.description,
-        department=contract_data.department,
-        project_name=contract_data.project_name,
-        tags=contract_data.tags,
+        title=title,
+        contract_type=contract_type,
+        party_a=party_a,
+        party_b=party_b,
+        amount=amount,
+        currency=currency or "CNY",
+        sign_date=datetime.strptime(sign_date, "%Y-%m-%d") if sign_date else None,
+        effective_date=datetime.strptime(effective_date, "%Y-%m-%d") if effective_date else None,
+        expiry_date=datetime.strptime(expiry_date, "%Y-%m-%d") if expiry_date else None,
+        description=description,
+        department=department,
+        project_name=project_name,
+        file_path=file_path,
+        file_name=file_name,
+        file_size=file_size,
+        file_type=file_type,
         uploader_id=current_user.id,
         status=ContractStatus.DRAFT,
     )
     db.add(contract)
     await db.commit()
     await db.refresh(contract)
+    
+    # 如果上传了文件，自动保存文件记录
+    if file_path and file_name:
+        contract_file = ContractFile(
+            contract_id=contract.id,
+            file_name=file_name,
+            file_path=file_path,
+            file_size=file_size,
+            file_type=file_type,
+            uploader_id=current_user.id,
+        )
+        db.add(contract_file)
+        await db.commit()
     
     return contract
 

@@ -13,6 +13,12 @@ export const contractsApi = {
   create(data: ContractCreateData) {
     return request.post('/contracts', data)
   },
+  
+  createWithFile(formData: FormData) {
+    return request.post('/contracts', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   update(id: number, data: Partial<ContractCreateData>) {
     return request.put(`/contracts/${id}`, data)
