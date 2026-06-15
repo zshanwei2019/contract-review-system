@@ -58,6 +58,11 @@ export const contractsApi = {
     })
   },
 
+  // 对比原合同和修改后合同
+  compareWithOriginal(contractId: number) {
+    return request.get(`/contracts/${contractId}/compare-original`)
+  },
+
   getFiles(id: number) {
     return request.get(`/contracts/${id}/files`)
   },

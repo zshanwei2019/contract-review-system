@@ -612,14 +612,26 @@ async def export_modified_contract(
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm)
         
+        # 注册中文字体
+        font_paths = [
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # Linux
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Linux
+        ]
+        
+        font_name = "Helvetica"
+        for fp in font_paths:
+            try:
+                pdfmetrics.registerFont(TTFont("ChineseFont", fp))
+                font_name = "ChineseFont"
+                break
+            except Exception:
+                continue
+        
         styles = getSampleStyleSheet()
-        try:
-            pdfmetrics.registerFont(TTFont("SimSun", "/usr/share/fonts/truetype/simsun.ttc"))
-            normal_style = ParagraphStyle("Chinese", parent=styles["Normal"], fontName="SimSun", fontSize=10)
-            heading_style = ParagraphStyle("ChineseHeading", parent=styles["Heading1"], fontName="SimSun", fontSize=14)
-        except Exception:
-            normal_style = styles["Normal"]
-            heading_style = styles["Heading1"]
+        normal_style = ParagraphStyle("Chinese", parent=styles["Normal"], fontName=font_name, fontSize=10, leading=14)
+        heading_style = ParagraphStyle("ChineseHeading", parent=styles["Heading1"], fontName=font_name, fontSize=14, leading=18)
         
         elements = []
         for line in modified_content.split("\n"):
@@ -630,6 +642,11 @@ async def export_modified_contract(
             elif line.startswith("### "):
                 elements.append(Paragraph(line[4:], heading_style))
             elif line.strip():
+                # 处理Markdown格式
+                import re
+                line = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', line)
+                line = re.sub(r'\*(.+?)\*', r'<i>\1</i>', line)
+                line = re.sub(r'\[已修改\]', '<font color="green"><b>[已修改]</b></font>', line)
                 elements.append(Paragraph(line, normal_style))
             elements.append(Spacer(1, 0.2*cm))
         
@@ -700,6 +717,76 @@ async def compare_versions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"版本对比失败: {str(e)}"
         )
+
+
+@router.get("/{contract_id}/compare-original")
+async def compare_with_original(
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """对比原合同和修改后合同"""
+    from app.services.contract_modifier import contract_modifier
+    
+    # 获取合同
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="合同不存在",
+        )
+    
+    # 获取原合同描述
+    original_content = contract.description or "无描述信息"
+    
+    # 获取最新版本的修改后内容
+    result = await db.execute(
+        select(ContractVersion)
+        .where(ContractVersion.contract_id == contract_id)
+        .order_by(ContractVersion.version_no.desc())
+        .limit(1)
+    )
+    latest_version = result.scalar_one_or_none()
+    
+    modified_content = None
+    if latest_version:
+        # 获取审查发现来重新生成修改后内容
+        review_result = await db.execute(
+            select(ReviewTask)
+            .where(ReviewTask.contract_id == contract_id)
+            .order_by(ReviewTask.created_at.desc())
+            .limit(1)
+        )
+        review_task = review_result.scalar_one_or_none()
+        
+        if review_task:
+            findings_result = await db.execute(
+                select(ReviewOpinion)
+                .where(ReviewOpinion.review_task_id == review_task.id)
+            )
+            findings = findings_result.scalars().all()
+            
+            findings_list = [{
+                "id": f.id,
+                "clause": f.clause_reference or "",
+                "content": f.content,
+                "risk_level": f.risk_level or "medium",
+                "category": f.opinion_type or "",
+                "suggestion": f.suggestion or ""
+            } for f in findings]
+            suggestions = contract_modifier._generate_with_rules(contract, findings_list)
+            modified_content = await contract_modifier.rewrite_contract_with_ai(
+                contract, suggestions
+            )
+    
+    return {
+        "contract_id": contract_id,
+        "contract_title": contract.title,
+        "original_content": original_content,
+        "modified_content": modified_content,
+        "has_modifications": modified_content is not None,
+        "version_no": latest_version.version_no if latest_version else None
+    }
 
 
 @router.post("/batch-review")

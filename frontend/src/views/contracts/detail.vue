@@ -69,6 +69,14 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-button
+              type="info"
+              icon="Document"
+              :loading="compareLoading"
+              @click="handleCompare"
+            >
+              原文对比
+            </el-button>
           </div>
         </div>
       </template>
@@ -304,6 +312,59 @@
         <el-button @click="showModifiedContent = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 原文对比对话框 -->
+    <el-dialog
+      v-model="showCompareDialog"
+      title="原文对比"
+      width="95%"
+      :close-on-click-modal="false"
+      fullscreen
+    >
+      <div v-if="compareLoading" style="text-align: center; padding: 40px;">
+        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+        <p>正在生成对比...</p>
+      </div>
+      <div v-else-if="compareData">
+        <el-alert
+          :title="`合同: ${compareData.contract_title}`"
+          :description="compareData.has_modifications ? '已显示原合同与修改后合同的对比' : '该合同尚未进行AI修改'"
+          :type="compareData.has_modifications ? 'success' : 'info""
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <div class="compare-panel">
+              <div class="compare-header">
+                <el-tag type="info" size="large">📄 原合同</el-tag>
+              </div>
+              <div class="compare-content">
+                <div v-html="renderMarkdown(compareData.original_content)"></div>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="12">
+            <div class="compare-panel">
+              <div class="compare-header">
+                <el-tag type="success" size="large">✨ 修改后合同</el-tag>
+                <el-tag v-if="compareData.version_no" type="warning" size="small" style="margin-left: 8px;">
+                  版本 {{ compareData.version_no }}
+                </el-tag>
+              </div>
+              <div class="compare-content">
+                <div v-if="compareData.modified_content" v-html="renderMarkdown(compareData.modified_content)"></div>
+                <el-empty v-else description="暂无修改内容" />
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+      <template #footer>
+        <el-button @click="showCompareDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -335,6 +396,9 @@ const modificationLoading = ref(false)
 const showModifiedContent = ref(false)
 const modifiedContent = ref('')
 const diffSummary = ref('')
+const showCompareDialog = ref(false)
+const compareData = ref<any>(null)
+const compareLoading = ref(false)
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -504,6 +568,22 @@ const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
     ElMessage.success('导出成功')
   } catch (err: any) {
     ElMessage.error('导出失败')
+  }
+}
+
+const handleCompare = async () => {
+  compareLoading.value = true
+  showCompareDialog.value = true
+  compareData.value = null
+  
+  try {
+    const result: any = await contractsApi.compareWithOriginal(contractId.value)
+    compareData.value = result
+  } catch (err: any) {
+    console.error('获取对比数据失败:', err)
+    ElMessage.error('获取对比数据失败')
+  } finally {
+    compareLoading.value = false
   }
 }
 
@@ -734,5 +814,45 @@ onMounted(() => {
     width: 80px;
     min-width: 80px;
   }
+}
+
+/* 对比面板样式 */
+.compare-panel {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.compare-header {
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+}
+
+.compare-content {
+  padding: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+  line-height: 1.8;
+  font-size: 14px;
+}
+
+.compare-content :deep(h1),
+.compare-content :deep(h2),
+.compare-content :deep(h3) {
+  margin: 16px 0 8px;
+  color: #303133;
+}
+
+.compare-content :deep(strong) {
+  color: #409eff;
+}
+
+.compare-content :deep(.highlight) {
+  background-color: #fdf6ec;
+  padding: 2px 4px;
+  border-radius: 2px;
 }
 </style>
