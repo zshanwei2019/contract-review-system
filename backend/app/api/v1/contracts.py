@@ -586,10 +586,12 @@ async def init_risk_items(
             risk_item = RiskItem(
                 contract_id=contract.id,
                 review_task_id=review_task.id,
-                title=opinion.content[:50] if opinion.content else "审查发现",
-                description=opinion.content,
+                risk_description=opinion.content if opinion.content else "审查发现",
                 risk_level=opinion.risk_level or "medium",
-                risk_score=70 if opinion.risk_level == "high" else (50 if opinion.risk_level == "medium" else 30),
+                risk_category=opinion.opinion_type if opinion.opinion_type else "risk",
+                clause_reference=opinion.clause_reference,
+                suggestion=opinion.suggestion,
+                legal_basis=opinion.legal_basis,
                 is_resolved=False,
             )
             db.add(risk_item)
