@@ -363,6 +363,12 @@
       </div>
       <template #footer>
         <el-button @click="showCompareDialog = false">关闭</el-button>
+        <el-button type="primary" @click="exportCompare('markdown')" :disabled="!compareData?.has_modifications">
+          <el-icon><Download /></el-icon> 导出Markdown
+        </el-button>
+        <el-button type="success" @click="exportCompare('word')" :disabled="!compareData?.has_modifications">
+          <el-icon><Document /></el-icon> 导出Word
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -584,6 +590,26 @@ const handleCompare = async () => {
     ElMessage.error('获取对比数据失败')
   } finally {
     compareLoading.value = false
+  }
+}
+
+const exportCompare = async (format: 'word' | 'markdown') => {
+  if (!compareData.value?.has_modifications) return
+  
+  try {
+    const blob = await contractsApi.exportModifiedContract(contractId.value, format)
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `合同对比_${contract.value?.title || 'export'}.${format === 'word' ? 'docx' : 'md'}`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (err) {
+    console.error('导出失败:', err)
+    ElMessage.error('导出失败')
   }
 }
 
