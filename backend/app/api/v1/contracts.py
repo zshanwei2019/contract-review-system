@@ -436,6 +436,11 @@ async def get_modification_suggestions(
             "suggestions": [asdict(s) for s in suggestions],
             "total": len(suggestions)
         }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         import traceback
         print(f"生成修改建议错误: {traceback.format_exc()}")

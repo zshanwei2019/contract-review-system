@@ -52,6 +52,7 @@
               v-if="contract.risk_level"
               type="success"
               icon="MagicStick"
+              :loading="modificationLoading"
               @click="handleGetModifications"
             >
               AI修改建议
@@ -262,6 +263,7 @@ const modificationSuggestions = ref<any[]>([])
 const showModificationDialog = ref(false)
 const selectedSuggestions = ref<string[]>([])
 const applyingModifications = ref(false)
+const modificationLoading = ref(false)
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -361,13 +363,20 @@ const handleAgentReview = async (command: string) => {
 }
 
 const handleGetModifications = async () => {
+  modificationLoading.value = true
   try {
     const result: any = await contractsApi.getModificationSuggestions(contractId.value)
     modificationSuggestions.value = result.suggestions || []
     showModificationDialog.value = true
     selectedSuggestions.value = []
+    if (modificationSuggestions.value.length === 0) {
+      ElMessage.info('暂无修改建议，请先完成AI审查')
+    }
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || '获取修改建议失败')
+    console.error('获取修改建议失败:', err)
+    ElMessage.error(err?.response?.data?.detail || err?.message || '获取修改建议失败，请稍后重试')
+  } finally {
+    modificationLoading.value = false
   }
 }
 
