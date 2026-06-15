@@ -4,9 +4,20 @@
       <template #header>
         <div class="card-header">
           <span>合同列表</span>
-          <el-button type="primary" icon="Plus" @click="router.push('/contracts/create')">
-            新建合同
-          </el-button>
+          <div>
+            <el-button 
+              v-if="selectedIds.length > 0"
+              type="warning" 
+              icon="Check" 
+              @click="handleBatchReview"
+              :loading="batchReviewLoading"
+            >
+              批量审查 ({{ selectedIds.length }})
+            </el-button>
+            <el-button type="primary" icon="Plus" @click="router.push('/contracts/create')">
+              新建合同
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -47,7 +58,9 @@
         stripe
         border
         style="width: 100%"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column type="selection" width="55" />
         <el-table-column prop="contract_no" label="合同编号" width="160" />
         <el-table-column prop="title" label="合同名称" min-width="200" show-overflow-tooltip />
         <el-table-column prop="contract_type" label="类型" width="120">
@@ -135,7 +148,9 @@ import dayjs from 'dayjs'
 
 const router = useRouter()
 const loading = ref(false)
+const batchReviewLoading = ref(false)
 const contracts = ref<any[]>([])
+const selectedIds = ref<number[]>([])
 
 const searchForm = reactive({
   keyword: '',
@@ -219,6 +234,30 @@ const getRiskLabel = (level: string) => {
 }
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
+
+const handleSelectionChange = (selection: any[]) => {
+  selectedIds.value = selection.map((item: any) => item.id)
+}
+
+const handleBatchReview = async () => {
+  await ElMessageBox.confirm(
+    `确定批量审查选中的 ${selectedIds.value.length} 个合同？`,
+    '批量审查确认',
+    { type: 'warning' }
+  )
+  
+  batchReviewLoading.value = true
+  try {
+    const res: any = await contractsApi.batchReview(selectedIds.value)
+    ElMessage.success(res.message)
+    fetchContracts()
+    selectedIds.value = []
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '批量审查失败')
+  } finally {
+    batchReviewLoading.value = false
+  }
+}
 
 onMounted(() => {
   fetchContracts()

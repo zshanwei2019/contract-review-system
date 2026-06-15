@@ -1118,3 +1118,106 @@ async def _batch_review_task(contract_ids: List[int], user_id: int):
             except Exception as e:
                 print(f"批量审查合同 {contract_id} 失败: {e}")
                 continue
+
+    return {
+        "message": f"批量审查完成，成功 {len(results['success'])} 个，失败 {len(results['failed'])} 个",
+        "success_count": len(results['success']),
+        "failed_count": len(results['failed']),
+        "results": results
+    }
+
+
+@router.post("/batch-review")
+async def batch_review_contracts(
+    contract_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量审查合同"""
+    from app.services.ai_review import review_contract
+    
+    results = {"success": [], "failed": []}
+    
+    for contract_id in contract_ids:
+        try:
+            contract = await db.get(Contract, contract_id)
+            if not contract:
+                results["failed"].append({"id": contract_id, "error": "合同不存在"})
+                continue
+            
+            # 执行AI审查
+            contract_text = contract.description or ""
+            ai_result = await review_contract(
+                contract_text=contract_text,
+                contract_type=contract.contract_type or "general",
+                extra_context=f"合同名称: {contract.title}, 甲方: {contract.party_a}, 乙方: {contract.party_b}"
+            )
+            
+            # 创建审查任务
+            review_task = ReviewTask(
+                contract_id=contract.id,
+                reviewer_id=current_user.id,
+                status=TaskStatus.COMPLETED,
+                review_opinion=ai_result["summary"],
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow(),
+            )
+            db.add(review_task)
+            await db.flush()
+            
+            # 创建审查意见和风险项
+            for finding in ai_result.get("findings", []):
+                opinion = ReviewOpinion(
+                    review_task_id=review_task.id,
+                    reviewer_id=current_user.id,
+                    opinion_type=finding.get("category", "risk"),
+                    content=f"**{finding.get('title', '')}**\n\n{finding.get('description', '')}",
+                    suggestion=finding.get("suggestion"),
+                    risk_level=finding.get("risk_level"),
+                    clause_reference=finding.get("clause_reference"),
+                    legal_basis=finding.get("legal_basis"),
+                )
+                db.add(opinion)
+                
+                # 创建风险项
+                risk_item = RiskItem(
+                    contract_id=contract.id,
+                    review_task_id=review_task.id,
+                    title=finding.get("title", "未命名风险"),
+                    risk_description=finding.get("description", ""),
+                    risk_level=finding.get("risk_level", "medium"),
+                    risk_category=finding.get("category", "risk"),
+                    clause_text=finding.get("clause_text"),
+                    clause_location=finding.get("clause_location"),
+                    confidence=finding.get("confidence", 0.8),
+                    suggestion=finding.get("suggestion"),
+                    legal_basis=finding.get("legal_basis"),
+                    is_resolved=False,
+                )
+                db.add(risk_item)
+            
+            # 更新合同状态
+            contract.status = ContractStatus.REVIEWED
+            contract.reviewed_at = datetime.utcnow()
+            contract.reviewer_id = current_user.id
+            
+            await db.commit()
+            
+            results["success"].append({
+                "id": contract_id,
+                "title": contract.title,
+                "risk_level": ai_result.get("risk_level", "medium"),
+                "risk_score": ai_result.get("risk_score", 0),
+                "findings_count": len(ai_result.get("findings", []))
+            })
+            
+        except Exception as e:
+            await db.rollback()
+            results["failed"].append({"id": contract_id, "error": str(e)})
+    
+    return {
+        "message": f"批量审查完成，成功 {len(results['success'])} 个，失败 {len(results['failed'])} 个",
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "results": results
+    }

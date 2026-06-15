@@ -84,4 +84,9 @@ export const contractsApi = {
   aiReview(id: number) {
     return request.post(`/contracts/${id}/ai-review`)
   },
+
+  // 批量审查
+  batchReview(contractIds: number[]) {
+    return request.post('/contracts/batch-review', contractIds)
+  },
 }
