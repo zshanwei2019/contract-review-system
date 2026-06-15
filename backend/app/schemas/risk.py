@@ -79,6 +79,9 @@ class RiskItemBase(BaseModel):
     risk_level: RiskLevel
     risk_category: Optional[str] = None
     risk_description: str
+    clause_text: Optional[str] = None  # 涉及的原合同条款文本
+    clause_location: Optional[str] = None  # 条款位置描述
+    confidence: float = 0.8  # 置信度
     clause_reference: Optional[str] = None
     suggestion: Optional[str] = None
     legal_basis: Optional[str] = None
@@ -112,6 +115,8 @@ class RiskItemResponse(RiskItemBase):
     
     class Config:
         from_attributes = True
+        # 允许任意类型以支持序列化
+        arbitrary_types_allowed = True
 
 
 class RiskItemList(BaseModel):

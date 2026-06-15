@@ -523,6 +523,10 @@ async def ai_review_contract(
             risk_level=finding.get("risk_level", "medium"),
             risk_category=finding.get("category", "risk"),
             clause_reference=finding.get("clause_reference"),
+            # 条款级定位信息
+            clause_text=finding.get("clause_text"),
+            clause_location=finding.get("clause_location"),
+            confidence=finding.get("confidence", 0.8),
             suggestion=finding.get("suggestion"),
             legal_basis=finding.get("legal_basis"),
             is_resolved=False,

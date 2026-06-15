@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -77,6 +77,11 @@ class RiskItem(Base):
     risk_level = Column(Enum(RiskLevel), nullable=False)
     risk_category = Column(String(100))
     risk_description = Column(Text, nullable=False)
+    
+    # 条款级定位（新增）
+    clause_text = Column(Text)  # 涉及的原合同条款文本
+    clause_location = Column(String(500))  # 条款位置描述（如"第3.2条"）
+    confidence = Column(Float, default=0.8)  # 置信度
     
     # 位置
     clause_reference = Column(String(200))  # 条款引用

@@ -30,6 +30,24 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="clause_location" label="条款位置" width="150" show-overflow-tooltip />
+        <el-table-column prop="clause_text" label="涉及条款" min-width="250" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.clause_text" class="clause-text">{{ row.clause_text }}</span>
+            <span v-else class="no-clause">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="confidence" label="置信度" width="100">
+          <template #default="{ row }">
+            <el-progress
+              v-if="row.confidence"
+              :percentage="Math.round(row.confidence * 100)"
+              :stroke-width="10"
+              :color="getConfidenceColor(row.confidence)"
+            />
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="contract.title" label="关联合同" width="200" show-overflow-tooltip />
         <el-table-column prop="is_resolved" label="状态" width="100">
           <template #default="{ row }">
@@ -37,9 +55,6 @@
               {{ row.is_resolved ? '已处理' : '未处理' }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
@@ -92,6 +107,12 @@ const getRiskLabel = (level: string) => {
   return map[level] || level
 }
 
+const getConfidenceColor = (confidence: number) => {
+  if (confidence >= 0.8) return '#67c23a'
+  if (confidence >= 0.6) return '#e6a23c'
+  return '#f56c6c'
+}
+
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 
 const fetchItems = async () => {
@@ -136,4 +157,20 @@ onMounted(() => { fetchItems() })
 <style scoped>
 .search-bar { display: flex; gap: 12px; margin-bottom: 16px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+.clause-text {
+  font-family: monospace;
+  font-size: 12px;
+  color: #606266;
+  background-color: #f5f7fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.no-clause {
+  color: #c0c4cc;
+}
 </style>

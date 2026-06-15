@@ -39,8 +39,12 @@ REVIEW_SYSTEM_PROMPT = """你是一位资深的企业法务顾问，精通中国
   - title: 问题标题
   - description: 问题描述
   - suggestion: 修改建议
-  - clause_reference: 相关条款引用（如有）
-  - legal_basis: 法律依据"""
+  - **clause_text**: 涉及的原合同条款文本（精确引用原文）
+  - **clause_location**: 条款位置描述（如"第3.2条"、"违约责任部分"、"付款条款第2段"）
+  - legal_basis: 法律依据
+  - **confidence**: 置信度 0-1
+
+重要：对于每个发现的风险，必须精确引用原合同中的相关条款文本，并说明条款位置。"""
 
 # 合同基本信息提取提示词
 EXTRACT_INFO_PROMPT = """请从以下合同文本中提取基本信息。
