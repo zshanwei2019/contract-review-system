@@ -85,26 +85,27 @@ const routes: RouteRecordRaw[] = [
           },
         ],
       },
-      {
-        path: 'workflows',
-        name: 'Workflows',
-        redirect: '/workflows/instances',
-        meta: { title: '工作流', icon: 'Connection' },
-        children: [
-          {
-            path: 'instances',
-            name: 'WorkflowInstances',
-            component: () => import('@/views/workflows/instances.vue'),
-            meta: { title: '流程实例' },
-          },
-          {
-            path: 'definitions',
-            name: 'WorkflowDefinitions',
-            component: () => import('@/views/workflows/definitions.vue'),
-            meta: { title: '流程定义' },
-          },
-        ],
-      },
+      // 工作流功能暂时隐藏
+      // {
+      //   path: 'workflows',
+      //   name: 'Workflows',
+      //   redirect: '/workflows/instances',
+      //   meta: { title: '工作流', icon: 'Connection' },
+      //   children: [
+      //     {
+      //       path: 'instances',
+      //       name: 'WorkflowInstances',
+      //       component: () => import('@/views/workflows/instances.vue'),
+      //       meta: { title: '流程实例' },
+      //     },
+      //     {
+      //       path: 'definitions',
+      //       name: 'WorkflowDefinitions',
+      //       component: () => import('@/views/workflows/definitions.vue'),
+      //       meta: { title: '流程定义' },
+      //     },
+      //   ],
+      // },
       {
         path: 'users',
         name: 'Users',
