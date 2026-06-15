@@ -166,7 +166,9 @@ async def list_risk_items(
     total = total_result.scalar()
     
     # Get paginated results
+    from sqlalchemy.orm import selectinload
     query = query.order_by(RiskItem.created_at.desc())
+    query = query.options(selectinload(RiskItem.contract))
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     items = result.scalars().all()
