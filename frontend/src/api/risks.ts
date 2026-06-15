@@ -25,6 +25,10 @@ export const risksApi = {
     return request.put(`/risks/items/${id}`, data)
   },
   
+  initItems() {
+    return request.post('/contracts/init-risk-items')
+  },
+  
   initRules() {
     return request.post('/risks/init-rules')
   },

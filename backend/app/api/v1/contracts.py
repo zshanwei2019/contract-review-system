@@ -512,6 +512,20 @@ async def ai_review_contract(
         )
         db.add(opinion)
     
+    # 创建风险项（用于风险管理页面显示）
+    from app.models.risk import RiskItem
+    for finding in ai_result.get("findings", []):
+        risk_item = RiskItem(
+            contract_id=contract.id,
+            review_task_id=review_task.id,
+            title=finding.get("title", "未命名风险"),
+            description=finding.get("description", ""),
+            risk_level=finding.get("risk_level", "medium"),
+            risk_score=int(finding.get("risk_level", "medium") == "high") * 70 + int(finding.get("risk_level", "medium") == "medium") * 50 + 30,
+            is_resolved=False,
+        )
+        db.add(risk_item)
+    
     # 更新合同状态
     contract.status = ContractStatus.REVIEWED
     contract.reviewed_at = datetime.utcnow()
@@ -527,6 +541,66 @@ async def ai_review_contract(
         "risk_score": ai_result["risk_score"],
         "summary": ai_result["summary"],
         "findings_count": len(ai_result.get("findings", [])),
+    }
+
+
+@router.post("/init-risk-items")
+async def init_risk_items(
+    current_user: User = Depends(require_role("admin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """初始化已审查合同的风险项（补录历史数据）"""
+    from app.models.risk import RiskItem
+    
+    # 获取所有已审查的合同
+    result = await db.execute(
+        select(Contract).where(Contract.status == ContractStatus.REVIEWED)
+    )
+    contracts = result.scalars().all()
+    
+    created_count = 0
+    
+    for contract in contracts:
+        # 检查是否已有风险项
+        existing = await db.execute(
+            select(RiskItem).where(RiskItem.contract_id == contract.id)
+        )
+        if existing.scalars().first():
+            continue
+        
+        # 从审查意见中创建风险项
+        review_result = await db.execute(
+            select(ReviewTask).where(ReviewTask.contract_id == contract.id)
+        )
+        review_task = review_result.scalars().first()
+        
+        if not review_task:
+            continue
+        
+        opinions_result = await db.execute(
+            select(ReviewOpinion).where(ReviewOpinion.review_task_id == review_task.id)
+        )
+        opinions = opinions_result.scalars().all()
+        
+        for opinion in opinions:
+            risk_item = RiskItem(
+                contract_id=contract.id,
+                review_task_id=review_task.id,
+                title=opinion.content[:50] if opinion.content else "审查发现",
+                description=opinion.content,
+                risk_level=opinion.risk_level or "medium",
+                risk_score=70 if opinion.risk_level == "high" else (50 if opinion.risk_level == "medium" else 30),
+                is_resolved=False,
+            )
+            db.add(risk_item)
+            created_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"成功创建{created_count}条风险项",
+        "created_count": created_count,
+        "processed_contracts": len(contracts),
     }
 
 

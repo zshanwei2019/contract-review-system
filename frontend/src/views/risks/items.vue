@@ -2,7 +2,10 @@
   <div class="risk-items">
     <el-card shadow="hover">
       <template #header>
-        <span>风险项列表</span>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span>风险项列表</span>
+          <el-button type="success" icon="Refresh" @click="handleInitItems" :loading="initLoading">初始化风险项</el-button>
+        </div>
       </template>
       
       <div class="search-bar">
@@ -74,6 +77,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 
 const loading = ref(false)
+const initLoading = ref(false)
 const items = ref<any[]>([])
 const searchForm = reactive({ risk_level: '', is_resolved: undefined as boolean | undefined })
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
@@ -115,6 +119,15 @@ const handleResolve = async (row: any) => {
     ElMessage.success('已标记处理')
     fetchItems()
   } catch { ElMessage.error('操作失败') }
+}
+
+const handleInitItems = async () => {
+  try {
+    initLoading.value = true
+    const res: any = await risksApi.initItems()
+    ElMessage.success(res.message || '初始化成功')
+    await fetchItems()
+  } catch { ElMessage.error('初始化失败') } finally { initLoading.value = false }
 }
 
 onMounted(() => { fetchItems() })
