@@ -745,9 +745,10 @@ async def compare_with_original(
         except Exception as e:
             print(f"提取原合同文件内容失败: {e}")
     
-    # 如果无法从文件提取，使用描述
+    # 如果无法从文件提取，使用AI生成基础合同内容
     if not original_content:
-        original_content = contract.description or "无法获取原合同内容"
+        # 使用规则引擎生成基础合同（不包含修改建议）
+        original_content = contract_modifier._rewrite_with_rules(contract, [])
     
     # 获取最新版本的修改后内容
     result = await db.execute(
