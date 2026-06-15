@@ -371,7 +371,7 @@ class ContractModifier:
         if not contract:
             raise ValueError(f"合同 {contract_id} 不存在")
         
-        # 获取修改建议（从审查发现中获取）
+        # 获取审查记录
         result = await db.execute(
             select(ReviewTask)
             .where(ReviewTask.contract_id == contract_id)
@@ -383,8 +383,30 @@ class ContractModifier:
         if not review_task:
             raise ValueError(f"合同 {contract_id} 没有审查记录")
         
-        # 生成修改建议
-        suggestions = await self.generate_modification_suggestions(db, contract_id)
+        # 直接基于审查发现生成修改建议（使用规则引擎，避免调用AI超时）
+        findings_result = await db.execute(
+            select(ReviewOpinion)
+            .where(ReviewOpinion.review_task_id == review_task.id)
+        )
+        findings = findings_result.scalars().all()
+        
+        if not findings:
+            raise ValueError(f"合同 {contract_id} 没有审查发现")
+        
+        # 构建审查发现列表
+        findings_list = []
+        for finding in findings:
+            findings_list.append({
+                "id": finding.id,
+                "clause": finding.clause_reference or "",
+                "content": finding.content,
+                "risk_level": finding.risk_level or "medium",
+                "category": finding.opinion_type or "",
+                "suggestion": finding.suggestion or ""
+            })
+        
+        # 使用规则引擎生成修改建议（快速，不调用AI）
+        suggestions = self._generate_with_rules(contract, findings_list)
         
         # 过滤出要应用的建议
         suggestions_to_apply = [s for s in suggestions if s.id in suggestion_ids]
