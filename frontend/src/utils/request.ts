@@ -5,7 +5,7 @@ import router from '@/router'
 
 const service: AxiosInstance = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000,
+  timeout: 120000,  // 2分钟超时，AI处理需要较长时间
   headers: {
     'Content-Type': 'application/json',
   },

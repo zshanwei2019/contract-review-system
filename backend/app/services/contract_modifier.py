@@ -138,7 +138,7 @@ class ContractModifier:
         prompt = self._build_modification_prompt(contract, findings)
         
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:  # 30秒超时
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
