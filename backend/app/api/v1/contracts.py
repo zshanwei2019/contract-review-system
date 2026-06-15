@@ -727,6 +727,7 @@ async def compare_with_original(
 ):
     """对比原合同和修改后合同"""
     from app.services.contract_modifier import contract_modifier
+    from app.services.file_parser import extract_text_from_file
     
     # 获取合同
     contract = await db.get(Contract, contract_id)
@@ -736,8 +737,17 @@ async def compare_with_original(
             detail="合同不存在",
         )
     
-    # 获取原合同描述
-    original_content = contract.description or "无描述信息"
+    # 获取原合同内容 - 从文件中提取
+    original_content = None
+    if contract.file_path:
+        try:
+            original_content = await extract_text_from_file(contract.file_path)
+        except Exception as e:
+            print(f"提取原合同文件内容失败: {e}")
+    
+    # 如果无法从文件提取，使用描述
+    if not original_content:
+        original_content = contract.description or "无法获取原合同内容"
     
     # 获取最新版本的修改后内容
     result = await db.execute(
