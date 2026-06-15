@@ -105,7 +105,7 @@ AGENT_ROLES = {
         "name": "风控规则Agent",
         "icon": "🛡️",
         "weight": 0.20,
-        "focus": "23条行业风控规则、14种毒丸条款检测、四维加权评估",
+        "focus": "行业风控规则、毒丸条款检测、四维加权评估",
         "system_prompt": None,  # 使用规则引擎，不调用LLM
     },
     "knowledge": {
