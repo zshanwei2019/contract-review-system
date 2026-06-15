@@ -267,6 +267,42 @@ async def upload_contract(
     )
 
 
+@router.post("/extract-info")
+async def extract_contract_info_from_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """上传文件并提取合同基本信息（不创建合同）"""
+    # Validate file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件格式，支持: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+        )
+    
+    # Validate file size
+    file_content = await file.read()
+    if len(file_content) > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件大小超过限制（最大{settings.MAX_FILE_SIZE // 1024 // 1024}MB）",
+        )
+    
+    # 临时保存文件用于提取
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+        tmp.write(file_content)
+        tmp_path = tmp.name
+    
+    try:
+        from app.services.ai_review import extract_contract_info
+        extracted_info = await extract_contract_info(tmp_path)
+        return extracted_info or {}
+    finally:
+        os.unlink(tmp_path)
+
+
 @router.get("/{contract_id}", response_model=ContractResponse)
 async def get_contract(
     contract_id: int,

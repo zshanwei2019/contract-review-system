@@ -189,9 +189,32 @@ const rules: FormRules = {
   contract_type: [{ required: true, message: '请选择合同类型', trigger: 'change' }],
 }
 
-const handleFileChange = (file: UploadFile) => {
+const handleFileChange = async (file: UploadFile) => {
   if (file.raw) {
     fileList.value.push(file.raw)
+    
+    // 上传后自动提取合同基本信息
+    try {
+      ElMessage.info('正在识别合同信息...')
+      const info: any = await contractsApi.extractInfo(file.raw)
+      
+      // 自动填充表单
+      if (info.title) form.title = info.title
+      if (info.contract_type) form.contract_type = info.contract_type
+      if (info.party_a) form.party_a = info.party_a
+      if (info.party_b) form.party_b = info.party_b
+      if (info.amount) form.amount = info.amount
+      if (info.currency) form.currency = info.currency
+      if (info.sign_date) form.sign_date = info.sign_date
+      if (info.effective_date) form.effective_date = info.effective_date
+      if (info.expiry_date) form.expiry_date = info.expiry_date
+      if (info.description) form.description = info.description
+      
+      ElMessage.success('已自动识别合同信息，请检查并补充')
+    } catch (err) {
+      console.error('提取合同信息失败:', err)
+      ElMessage.warning('自动识别失败，请手动填写')
+    }
   }
 }
 

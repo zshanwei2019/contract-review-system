@@ -40,6 +40,14 @@ export const contractsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  
+  extractInfo(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post('/contracts/extract-info', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   getVersions(id: number) {
     return request.get(`/contracts/${id}/versions`)
