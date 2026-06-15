@@ -28,6 +28,10 @@ service.interceptors.request.use(
 // Response interceptor
 service.interceptors.response.use(
   (response: AxiosResponse) => {
+    // 对于blob响应，直接返回response本身
+    if (response.config.responseType === 'blob') {
+      return response
+    }
     return response.data
   },
   async (error) => {

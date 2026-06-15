@@ -555,7 +555,7 @@ const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
     const response: any = await contractsApi.exportModifiedContract(contractId.value, format)
     
     // 创建下载链接
-    const blob = new Blob([response])
+    const blob = new Blob([response.data])
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
