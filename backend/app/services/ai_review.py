@@ -42,6 +42,26 @@ REVIEW_SYSTEM_PROMPT = """你是一位资深的企业法务顾问，精通中国
   - clause_reference: 相关条款引用（如有）
   - legal_basis: 法律依据"""
 
+# 合同基本信息提取提示词
+EXTRACT_INFO_PROMPT = """请从以下合同文本中提取基本信息。
+
+输出JSON格式：
+- title: 合同名称
+- contract_type: 合同类型（procurement/sales/outsourcing/equipment/lease/nda/service/construction/other）
+- party_a: 甲方名称
+- party_b: 乙方名称
+- amount: 合同金额（数字）
+- currency: 货币（CNY/USD/EUR）
+- sign_date: 签订日期（YYYY-MM-DD格式）
+- effective_date: 生效日期（YYYY-MM-DD格式）
+- expiry_date: 到期日期（YYYY-MM-DD格式）
+- description: 合同摘要（100字以内）
+
+如果某个字段无法从文本中提取，请返回null。
+
+合同文本：
+"""
+
 REVIEW_USER_PROMPT_TEMPLATE = """请审查以下合同：
 
 【合同名称】{title}
@@ -381,3 +401,67 @@ def _mock_review(contract_data: dict) -> dict:
         "summary": summary,
         "findings": findings,
     }
+
+
+async def extract_contract_info(file_path: str) -> dict:
+    """
+    从合同文件中提取基本信息
+    """
+    from app.services.file_parser import extract_text_from_file
+    
+    # 提取文件内容
+    file_content = extract_text_from_file(file_path)
+    if not file_content or len(file_content.strip()) < 50:
+        return None
+    
+    # 截取前3000字符用于提取（避免token浪费）
+    file_content_for_extract = file_content[:3000] + ("...\n[内容已截断]" if len(file_content) > 3000 else "")
+    
+    # 调用AI提取
+    if not settings.OPENAI_API_KEY:
+        return None
+    
+    try:
+        import httpx
+        
+        headers = {
+            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        
+        prompt = EXTRACT_INFO_PROMPT + file_content_for_extract
+        
+        payload = {
+            "model": settings.LLM_MODEL,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+        }
+        
+        response = httpx.post(
+            f"{settings.OPENAI_BASE_URL}/chat/completions",
+            json=payload,
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
+        
+        # 清理markdown代码块标记
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+        
+        return json.loads(content)
+        
+    except Exception as e:
+        logger.error(f"提取合同信息失败: {str(e)}")
+        return None

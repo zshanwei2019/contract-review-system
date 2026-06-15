@@ -114,6 +114,7 @@ async def create_contract(
     file_name = None
     file_size = None
     file_type = None
+    extracted_info = None
     
     if file:
         file_ext = os.path.splitext(file.filename)[1].lower()
@@ -142,19 +143,23 @@ async def create_contract(
         file_name = file.filename
         file_size = len(content)
         file_type = file_ext
+        
+        # AI自动提取合同基本信息
+        from app.services.ai_review import extract_contract_info
+        extracted_info = await extract_contract_info(file_path)
     
     contract = Contract(
         contract_no=generate_contract_no(),
-        title=title,
-        contract_type=contract_type,
-        party_a=party_a,
-        party_b=party_b,
-        amount=amount,
-        currency=currency or "CNY",
-        sign_date=datetime.strptime(sign_date, "%Y-%m-%d") if sign_date else None,
-        effective_date=datetime.strptime(effective_date, "%Y-%m-%d") if effective_date else None,
-        expiry_date=datetime.strptime(expiry_date, "%Y-%m-%d") if expiry_date else None,
-        description=description,
+        title=title or (extracted_info.get("title") if extracted_info else title),
+        contract_type=contract_type or (ContractType(extracted_info.get("contract_type")) if extracted_info and extracted_info.get("contract_type") else ContractType.OTHER),
+        party_a=party_a or (extracted_info.get("party_a") if extracted_info else None),
+        party_b=party_b or (extracted_info.get("party_b") if extracted_info else None),
+        amount=amount or (extracted_info.get("amount") if extracted_info else None),
+        currency=currency or (extracted_info.get("currency") if extracted_info else "CNY"),
+        sign_date=datetime.strptime(sign_date, "%Y-%m-%d") if sign_date else (datetime.strptime(extracted_info["sign_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("sign_date") else None),
+        effective_date=datetime.strptime(effective_date, "%Y-%m-%d") if effective_date else (datetime.strptime(extracted_info["effective_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("effective_date") else None),
+        expiry_date=datetime.strptime(expiry_date, "%Y-%m-%d") if expiry_date else (datetime.strptime(extracted_info["expiry_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("expiry_date") else None),
+        description=description or (extracted_info.get("description") if extracted_info else None),
         department=department,
         project_name=project_name,
         file_path=file_path,
@@ -192,7 +197,7 @@ async def upload_contract(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传合同文件"""
+    """上传合同文件，自动识别基本信息"""
     # Validate file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in settings.ALLOWED_EXTENSIONS:
@@ -213,18 +218,35 @@ async def upload_contract(
     upload_dir = os.path.join(settings.UPLOAD_DIR, "contracts")
     os.makedirs(upload_dir, exist_ok=True)
     
-    file_name = f"{uuid.uuid4()}{file_ext}"
-    file_path = os.path.join(upload_dir, file_name)
+    saved_name = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(upload_dir, saved_name)
     
     with open(file_path, "wb") as f:
         f.write(file_content)
     
+    # AI自动提取合同基本信息
+    from app.services.file_parser import extract_text_from_file
+    from app.services.ai_review import extract_contract_info
+    
+    extracted_info = await extract_contract_info(file_path)
+    
+    # 使用提取的信息或传入的参数
+    contract_title = title or (extracted_info.get("title") if extracted_info else None) or file.filename
+    contract_type_val = contract_type or (extracted_info.get("contract_type") if extracted_info else "other")
+    
     # Create contract
-    contract_title = title or file.filename
     contract = Contract(
         contract_no=generate_contract_no(),
         title=contract_title,
-        contract_type=contract_type or ContractType.OTHER,
+        contract_type=ContractType(contract_type_val) if contract_type_val else ContractType.OTHER,
+        party_a=extracted_info.get("party_a") if extracted_info else None,
+        party_b=extracted_info.get("party_b") if extracted_info else None,
+        amount=extracted_info.get("amount") if extracted_info else None,
+        currency=extracted_info.get("currency") if extracted_info else "CNY",
+        sign_date=datetime.strptime(extracted_info["sign_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("sign_date") else None,
+        effective_date=datetime.strptime(extracted_info["effective_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("effective_date") else None,
+        expiry_date=datetime.strptime(extracted_info["expiry_date"], "%Y-%m-%d") if extracted_info and extracted_info.get("expiry_date") else None,
+        description=extracted_info.get("description") if extracted_info else None,
         file_path=file_path,
         file_name=file.filename,
         file_size=len(file_content),
@@ -241,7 +263,7 @@ async def upload_contract(
         file_name=file.filename,
         file_path=file_path,
         status="success",
-        message="合同上传成功",
+        message="合同上传成功，已自动识别基本信息",
     )
 
 
