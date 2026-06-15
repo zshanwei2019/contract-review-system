@@ -62,43 +62,64 @@
       </template>
       
       <!-- 基本信息 -->
-      <el-descriptions :column="2" border class="info-section">
-        <el-descriptions-item label="合同编号">{{ contract.contract_no }}</el-descriptions-item>
-        <el-descriptions-item label="合同类型">
-          <el-tag size="small">{{ contractTypeLabels[contract.contract_type as ContractType] || contract.contract_type }}</el-tag>
+      <el-descriptions :column="3" border class="info-section" size="large">
+        <el-descriptions-item label="合同编号" :span="1">{{ contract.contract_no }}</el-descriptions-item>
+        <el-descriptions-item label="合同类型" :span="1">
+          <el-tag size="small" type="primary">{{ contractTypeLabels[contract.contract_type as ContractType] || contract.contract_type }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="甲方">{{ contract.party_a || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="乙方">{{ contract.party_b || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="合同金额">
-          {{ contract.amount ? formatAmount(contract.amount) : '-' }}
+        <el-descriptions-item label="合同状态" :span="1">
+          <el-tag :type="contractStatusColors[contract.status as ContractStatus] as any" size="small">
+            {{ contractStatusLabels[contract.status as ContractStatus] }}
+          </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="币种">{{ contract.currency || 'CNY' }}</el-descriptions-item>
-        <el-descriptions-item label="签订日期">{{ contract.sign_date ? String(contract.sign_date).substring(0, 10) : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="生效日期">{{ contract.effective_date ? String(contract.effective_date).substring(0, 10) : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="到期日期">{{ contract.expiry_date ? String(contract.expiry_date).substring(0, 10) : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="所属部门">{{ contract.department || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="项目名称" :span="2">{{ contract.project_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="合同描述" :span="2">{{ contract.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="甲方" :span="1">{{ contract.party_a || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="乙方" :span="1">{{ contract.party_b || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="合同金额" :span="1">
+          <span style="color: #f56c6c; font-weight: 600; font-size: 16px;">
+            {{ contract.amount ? formatAmount(contract.amount) : '-' }}
+          </span>
+        </el-descriptions-item>
+        <el-descriptions-item label="签订日期" :span="1">{{ contract.sign_date ? String(contract.sign_date).substring(0, 10) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="生效日期" :span="1">{{ contract.effective_date ? String(contract.effective_date).substring(0, 10) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="到期日期" :span="1">{{ contract.expiry_date ? String(contract.expiry_date).substring(0, 10) : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="所属部门" :span="1">{{ contract.department || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="币种" :span="1">{{ contract.currency || 'CNY' }}</el-descriptions-item>
+        <el-descriptions-item label="项目名称" :span="1">{{ contract.project_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="合同描述" :span="3">
+          <div style="white-space: pre-wrap; line-height: 1.6;">{{ contract.description || '-' }}</div>
+        </el-descriptions-item>
       </el-descriptions>
       
       <!-- 风险信息 -->
       <div v-if="contract.risk_level" class="risk-section">
-        <h3>风险评估</h3>
-        <el-row :gutter="20">
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">⚠️</span> 风险评估
+        </h3>
+        <el-row :gutter="24">
           <el-col :span="8">
-            <el-statistic title="风险等级">
-              <template #default>
-                <el-tag :type="getRiskColor(contract.risk_level)" size="large">
-                  {{ getRiskLabel(contract.risk_level) }}
-                </el-tag>
-              </template>
-            </el-statistic>
+            <div class="risk-card">
+              <div class="risk-label">风险等级</div>
+              <el-tag :type="getRiskColor(contract.risk_level)" size="large" effect="dark">
+                {{ getRiskLabel(contract.risk_level) }}
+              </el-tag>
+            </div>
           </el-col>
           <el-col :span="8">
-            <el-statistic title="风险评分" :value="contract.risk_score || 0" suffix="/ 100" />
+            <div class="risk-card">
+              <div class="risk-label">风险评分</div>
+              <div class="risk-score">
+                <span class="score-value" :style="{ color: contract.risk_score > 70 ? '#f56c6c' : contract.risk_score > 40 ? '#e6a23c' : '#67c23a' }">
+                  {{ contract.risk_score || 0 }}
+                </span>
+                <span class="score-unit">/ 100</span>
+              </div>
+            </div>
           </el-col>
           <el-col :span="8">
-            <el-statistic title="审查时间" :value="contract.reviewed_at ? formatDate(contract.reviewed_at) as any : '-'" />
+            <div class="risk-card">
+              <div class="risk-label">审查时间</div>
+              <div class="risk-time">{{ contract.reviewed_at ? formatDate(contract.reviewed_at) : '-' }}</div>
+            </div>
           </el-col>
         </el-row>
       </div>
@@ -569,7 +590,82 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
-.risk-section,
+/* 美化描述表格 */
+.info-section :deep(.el-descriptions__label) {
+  width: 100px;
+  min-width: 100px;
+  font-weight: 600;
+  color: #606266;
+  background-color: #fafafa !important;
+  white-space: nowrap;
+}
+
+.info-section :deep(.el-descriptions__content) {
+  color: #303133;
+  padding: 12px 16px;
+}
+
+.info-section :deep(.el-descriptions__cell) {
+  padding: 12px 16px;
+}
+
+.info-section :deep(.el-descriptions__body) {
+  background-color: #fff;
+}
+
+/* 风险评估部分 */
+.risk-section {
+  margin-top: 24px;
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7ed 100%);
+  border-radius: 12px;
+  border: 1px solid #ebeef5;
+}
+
+.risk-section h3 {
+  margin: 0 0 20px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.risk-card {
+  text-align: center;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.risk-label {
+  font-size: 14px;
+  color: #909399;
+  margin-bottom: 12px;
+}
+
+.risk-score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.score-value {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.score-unit {
+  font-size: 16px;
+  color: #909399;
+}
+
+.risk-time {
+  font-size: 16px;
+  color: #606266;
+  font-weight: 500;
+}
+
 .review-section,
 .version-section {
   margin-top: 24px;
@@ -577,12 +673,12 @@ onMounted(() => {
   border-top: 1px solid #eee;
 }
 
-.risk-section h3,
 .review-section h3,
 .version-section h3 {
   margin: 0 0 16px;
   font-size: 16px;
   font-weight: 600;
+  color: #303133;
 }
 
 .review-item {
@@ -598,12 +694,33 @@ onMounted(() => {
 }
 
 .reviewer {
-  color: #666;
+  color: #909399;
   font-size: 14px;
 }
 
 .review-summary {
   margin: 0;
-  color: #333;
+  color: #606266;
+  line-height: 1.6;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .card-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .info-section :deep(.el-descriptions__label) {
+    width: 80px;
+    min-width: 80px;
+  }
 }
 </style>
