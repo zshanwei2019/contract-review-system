@@ -57,6 +57,8 @@ class ModificationResult:
     total_suggestions: int
     modified_content: Optional[str] = None
     version_id: Optional[int] = None
+    original_content: Optional[str] = None
+    diff_summary: Optional[str] = None
 
 
 class ContractModifier:
@@ -414,7 +416,10 @@ class ContractModifier:
         if not suggestions_to_apply:
             raise ValueError("没有找到要应用的修改建议")
         
-        # 更新合同描述，添加修改记录
+        # 使用AI重写合同内容
+        modified_content = await self.rewrite_contract_with_ai(contract, suggestions_to_apply)
+        
+        # 生成修改摘要
         modification_summary = []
         for suggestion in suggestions_to_apply:
             modification_summary.append(
@@ -422,13 +427,13 @@ class ContractModifier:
             )
             suggestion.applied = True
         
-        # 更新合同信息
+        # 更新合同描述
         if contract.description:
             contract.description += "\n\n--- 修改记录 ---\n" + "\n".join(modification_summary)
         else:
             contract.description = "--- 修改记录 ---\n" + "\n".join(modification_summary)
         
-        # 创建新版本
+        # 创建新版本（存储修改后内容）
         version = ContractVersion(
             contract_id=contract.id,
             version_no=await self._get_next_version(db, contract.id),
@@ -441,14 +446,177 @@ class ContractModifier:
         await db.refresh(contract)
         await db.refresh(version)
         
+        # 生成差异摘要
+        diff_summary = f"已应用 {len(suggestions_to_apply)} 个修改建议：\n"
+        for s in suggestions_to_apply:
+            diff_summary += f"- {s.clause}: {s.reason}\n"
+        
         return ModificationResult(
             contract_id=contract.id,
             suggestions=suggestions,
             applied_count=len(suggestions_to_apply),
             total_suggestions=len(suggestions),
-            version_id=version.id
+            modified_content=modified_content,
+            version_id=version.id,
+            original_content=contract.description,
+            diff_summary=diff_summary
         )
     
+    async def rewrite_contract_with_ai(
+        self,
+        contract: Contract,
+        suggestions_to_apply: List[ModificationSuggestion]
+    ) -> str:
+        """使用AI重写合同内容，应用修改建议"""
+        if not self.api_key:
+            return self._rewrite_with_rules(contract, suggestions_to_apply)
+        
+        import httpx
+        
+        # 构建合同信息
+        contract_info = f"""合同名称：{contract.title}
+合同类型：{contract.contract_type.value if contract.contract_type else '未指定'}
+甲方：{contract.party_a or '未指定'}
+乙方：{contract.party_b or '未指定'}
+合同金额：{contract.amount or '未指定'} {contract.currency or 'CNY'}
+签订日期：{contract.sign_date or '未指定'}
+生效日期：{contract.effective_date or '未指定'}
+到期日期：{contract.expiry_date or '未指定'}
+合同摘要：{contract.description or '无'}"""
+        
+        # 构建修改建议列表
+        suggestions_text = ""
+        for i, s in enumerate(suggestions_to_apply, 1):
+            suggestions_text += f"""
+修改建议{i}:
+- 涉及条款：{s.clause}
+- 原始内容：{s.original_text}
+- 建议修改为：{s.suggested_text}
+- 修改理由：{s.reason}
+- 法律依据：{s.legal_basis}
+- 优先级：{s.priority.value}"""
+        
+        prompt = f"""请根据以下合同信息和修改建议，生成一份完整的修改后合同文档。
+
+【合同信息】
+{contract_info}
+
+【需要应用的修改建议】
+{suggestions_text}
+
+【要求】
+1. 生成一份完整的合同文档，包含所有必要的条款
+2. 将上述修改建议融入到合同条款中
+3. 使用专业、准确的法律术语
+4. 保持合同的整体结构和意图
+5. 符合中国法律法规
+6. 使用Markdown格式输出
+7. 在修改的条款旁边标注 [已修改] 标记
+8. 在文档末尾添加"修改说明"部分，列出所有修改内容
+
+请直接输出完整的合同文档内容："""
+        
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "你是一位专业的法律顾问，擅长合同起草和修改。请根据提供的信息生成完整的合同文档。"
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 8000
+                    }
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    content = result["choices"][0]["message"]["content"]
+                    return content
+                else:
+                    print(f"AI API返回错误: {response.status_code}")
+                    return self._rewrite_with_rules(contract, suggestions_to_apply)
+                    
+        except Exception as e:
+            print(f"AI重写合同失败: {str(e)}")
+            return self._rewrite_with_rules(contract, suggestions_to_apply)
+    
+    def _rewrite_with_rules(
+        self,
+        contract: Contract,
+        suggestions_to_apply: List[ModificationSuggestion]
+    ) -> str:
+        """使用规则引擎生成修改后合同（降级方案）"""
+        lines = [
+            f"# {contract.title}",
+            "",
+            f"**合同编号**：{contract.contract_no or '待填写'}",
+            f"**甲方**：{contract.party_a or '待填写'}",
+            f"**乙方**：{contract.party_b or '待填写'}",
+            f"**合同金额**：{contract.amount or '待填写'} {contract.currency or 'CNY'}",
+            f"**签订日期**：{contract.sign_date or '待填写'}",
+            f"**有效期**：{contract.effective_date or '待填写'} 至 {contract.expiry_date or '待填写'}",
+            "",
+            "---",
+            "",
+            "## 合同条款",
+            "",
+            "### 第一条 合同目的",
+            f"本合同旨在明确甲乙双方在{contract.title}项目中的权利和义务。",
+            "",
+            "### 第二条 合同金额与支付",
+            f"合同总金额为{contract.amount or '待填写'}{contract.currency or 'CNY'}。",
+            "",
+        ]
+        
+        # 添加修改后的条款
+        clause_num = 3
+        for s in suggestions_to_apply:
+            lines.append(f"### 第{clause_num}条 {s.clause} **[已修改]**")
+            lines.append("")
+            lines.append(s.suggested_text)
+            lines.append("")
+            lines.append(f"> **修改理由**：{s.reason}")
+            lines.append(f"> **法律依据**：{s.legal_basis}")
+            lines.append("")
+            clause_num += 1
+        
+        # 添加标准条款
+        lines.extend([
+            f"### 第{clause_num}条 违约责任",
+            "任何一方违反本合同约定的，应承担违约责任，赔偿对方因此遭受的损失。",
+            "",
+            f"### 第{clause_num + 1}条 争议解决",
+            "因本合同引起的或与本合同有关的任何争议，双方应友好协商解决；协商不成的，提交甲方所在地人民法院诉讼解决。",
+            "",
+            f"### 第{clause_num + 2}条 其他",
+            "本合同一式两份，甲乙双方各执一份，具有同等法律效力。",
+            "",
+            "---",
+            "",
+            "## 修改说明",
+            "",
+            f"本合同已根据AI审查建议进行了 {len(suggestions_to_apply)} 处修改：",
+            "",
+        ])
+        
+        for i, s in enumerate(suggestions_to_apply, 1):
+            lines.append(f"{i}. **{s.clause}**：{s.reason}")
+        
+        return "\n".join(lines)
+
     async def _get_next_version(self, db: AsyncSession, contract_id: int) -> int:
         """获取下一个版本号"""
         result = await db.execute(

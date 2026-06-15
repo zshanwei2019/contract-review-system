@@ -476,12 +476,177 @@ async def apply_modifications(
             "message": f"已应用 {result.applied_count} 个修改建议",
             "applied_count": result.applied_count,
             "total_suggestions": result.total_suggestions,
-            "version_id": result.version_id
+            "version_id": result.version_id,
+            "modified_content": result.modified_content,
+            "diff_summary": result.diff_summary
         }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"应用修改建议失败: {str(e)}"
+        )
+
+
+@router.get("/{contract_id}/export-modified")
+async def export_modified_contract(
+    contract_id: int,
+    format: str = Query("word", regex="^(word|pdf|markdown)$"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出修改后的合同"""
+    from app.services.contract_modifier import contract_modifier
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    # 获取合同
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="合同不存在",
+        )
+    
+    # 获取最新版本的修改后内容
+    result = await db.execute(
+        select(ContractVersion)
+        .where(ContractVersion.contract_id == contract_id)
+        .order_by(ContractVersion.version_no.desc())
+        .limit(1)
+    )
+    latest_version = result.scalar_one_or_none()
+    
+    if not latest_version:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该合同没有修改记录"
+        )
+    
+    # 获取审查发现来重新生成修改后内容
+    review_result = await db.execute(
+        select(ReviewTask)
+        .where(ReviewTask.contract_id == contract_id)
+        .order_by(ReviewTask.created_at.desc())
+        .limit(1)
+    )
+    review_task = review_result.scalar_one_or_none()
+    
+    if not review_task:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该合同没有审查记录"
+        )
+    
+    # 获取审查发现
+    findings_result = await db.execute(
+        select(ReviewOpinion)
+        .where(ReviewOpinion.review_task_id == review_task.id)
+    )
+    findings = findings_result.scalars().all()
+    
+    # 生成修改建议
+    findings_list = [{
+        "id": f.id,
+        "clause": f.clause_reference or "",
+        "content": f.content,
+        "risk_level": f.risk_level or "medium",
+        "category": f.opinion_type or "",
+        "suggestion": f.suggestion or ""
+    } for f in findings]
+    suggestions = contract_modifier._generate_with_rules(contract, findings_list)
+    
+    # 生成修改后合同内容
+    modified_content = await contract_modifier.rewrite_contract_with_ai(
+        contract, suggestions
+    )
+    
+    if format == "markdown":
+        return StreamingResponse(
+            io.BytesIO(modified_content.encode("utf-8")),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.md"}
+        )
+    elif format == "word":
+        # 生成Word文档
+        from docx import Document
+        from docx.shared import Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        
+        doc = Document()
+        style = doc.styles["Normal"]
+        style.font.name = "宋体"
+        style.font.size = Pt(11)
+        
+        # 解析Markdown并添加到Word
+        for line in modified_content.split("\n"):
+            if line.startswith("# "):
+                heading = doc.add_heading(line[2:], level=0)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif line.startswith("## "):
+                doc.add_heading(line[3:], level=1)
+            elif line.startswith("### "):
+                doc.add_heading(line[4:], level=2)
+            elif line.startswith("> "):
+                p = doc.add_paragraph()
+                run = p.add_run(line[2:])
+                run.italic = True
+            elif line.strip():
+                doc.add_paragraph(line)
+        
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.docx"}
+        )
+    else:  # pdf
+        # 生成PDF文档
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.units import cm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm)
+        
+        styles = getSampleStyleSheet()
+        try:
+            pdfmetrics.registerFont(TTFont("SimSun", "/usr/share/fonts/truetype/simsun.ttc"))
+            normal_style = ParagraphStyle("Chinese", parent=styles["Normal"], fontName="SimSun", fontSize=10)
+            heading_style = ParagraphStyle("ChineseHeading", parent=styles["Heading1"], fontName="SimSun", fontSize=14)
+        except Exception:
+            normal_style = styles["Normal"]
+            heading_style = styles["Heading1"]
+        
+        elements = []
+        for line in modified_content.split("\n"):
+            if line.startswith("# "):
+                elements.append(Paragraph(line[2:], heading_style))
+            elif line.startswith("## "):
+                elements.append(Paragraph(line[3:], heading_style))
+            elif line.startswith("### "):
+                elements.append(Paragraph(line[4:], heading_style))
+            elif line.strip():
+                elements.append(Paragraph(line, normal_style))
+            elements.append(Spacer(1, 0.2*cm))
+        
+        doc.build(elements)
+        buffer.seek(0)
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.pdf"}
         )
 
 

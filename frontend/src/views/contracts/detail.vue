@@ -236,6 +236,41 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 修改后合同内容对话框 -->
+    <el-dialog
+      v-model="showModifiedContent"
+      title="修改后合同"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="diffSummary" style="margin-bottom: 16px;">
+        <el-alert
+          title="修改摘要"
+          :description="diffSummary"
+          type="success"
+          :closable="false"
+          show-icon
+        />
+      </div>
+      <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+        <el-button type="primary" icon="Download" @click="handleExportModified('word')">
+          导出Word
+        </el-button>
+        <el-button type="warning" icon="Download" @click="handleExportModified('pdf')">
+          导出PDF
+        </el-button>
+        <el-button type="info" icon="Download" @click="handleExportModified('markdown')">
+          导出Markdown
+        </el-button>
+      </div>
+      <div style="max-height: 500px; overflow-y: auto; padding: 16px; background: #f5f7fa; border-radius: 4px;">
+        <div v-html="renderMarkdown(modifiedContent)"></div>
+      </div>
+      <template #footer>
+        <el-button @click="showModifiedContent = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -264,6 +299,9 @@ const showModificationDialog = ref(false)
 const selectedSuggestions = ref<string[]>([])
 const applyingModifications = ref(false)
 const modificationLoading = ref(false)
+const showModifiedContent = ref(false)
+const modifiedContent = ref('')
+const diffSummary = ref('')
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -401,11 +439,38 @@ const handleApplyModifications = async () => {
     const result: any = await contractsApi.applyModifications(contractId.value, selectedSuggestions.value)
     ElMessage.success(result.message)
     showModificationDialog.value = false
+    
+    // 显示修改后内容
+    modifiedContent.value = result.modified_content || ''
+    diffSummary.value = result.diff_summary || ''
+    showModifiedContent.value = true
+    
     fetchContract()
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '应用修改建议失败')
   } finally {
     applyingModifications.value = false
+  }
+}
+
+const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
+  try {
+    const response: any = await contractsApi.exportModifiedContract(contractId.value, format)
+    
+    // 创建下载链接
+    const blob = new Blob([response])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `modified_${contractId.value}.${format === 'word' ? 'docx' : format}`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
+  } catch (err: any) {
+    ElMessage.error('导出失败')
   }
 }
 
@@ -461,6 +526,21 @@ const reviewStatusLabels: Record<string, string> = {
 }
 
 const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
+
+const renderMarkdown = (text: string) => {
+  if (!text) return ''
+  // Simple markdown rendering
+  return text
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/\[已修改\]/g, '<span style="color: #67c23a; font-weight: bold;">[已修改]</span>')
+    .replace(/\n/g, '<br>')
+}
 
 onMounted(() => {
   fetchContract()

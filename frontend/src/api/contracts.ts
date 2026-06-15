@@ -50,6 +50,14 @@ export const contractsApi = {
     return request.post(`/contracts/${contractId}/apply-modifications`, suggestionIds)
   },
 
+  // 导出修改后的合同
+  exportModifiedContract(contractId: number, format: 'word' | 'pdf' | 'markdown' = 'word') {
+    return request.get(`/contracts/${contractId}/export-modified`, {
+      params: { format },
+      responseType: 'blob'
+    })
+  },
+
   getFiles(id: number) {
     return request.get(`/contracts/${id}/files`)
   },
