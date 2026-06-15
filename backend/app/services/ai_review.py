@@ -410,7 +410,7 @@ async def extract_contract_info(file_path: str) -> dict:
     from app.services.file_parser import extract_text_from_file
     
     # 提取文件内容
-    file_content = extract_text_from_file(file_path)
+    file_content = await extract_text_from_file(file_path)
     if not file_content or len(file_content.strip()) < 50:
         return None
     
