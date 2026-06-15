@@ -173,7 +173,37 @@ async def list_risk_items(
     result = await db.execute(query)
     items = result.scalars().all()
     
-    return RiskItemList(total=total, items=items)
+    # 手动转换items为字典列表
+    item_list = []
+    for item in items:
+        item_dict = {
+            "id": item.id,
+            "contract_id": item.contract_id,
+            "rule_id": item.rule_id,
+            "review_task_id": item.review_task_id,
+            "title": item.title,
+            "risk_level": item.risk_level.value if item.risk_level else None,
+            "risk_category": item.risk_category,
+            "risk_description": item.risk_description,
+            "clause_reference": item.clause_reference,
+            "page_number": item.page_number,
+            "suggestion": item.suggestion,
+            "legal_basis": item.legal_basis,
+            "is_confirmed": item.is_confirmed,
+            "is_resolved": item.is_resolved,
+            "resolved_by": item.resolved_by,
+            "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+            "resolution_note": item.resolution_note,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "contract": {
+                "id": item.contract.id,
+                "title": item.contract.title,
+                "contract_no": item.contract.contract_no,
+            } if item.contract else None,
+        }
+        item_list.append(item_dict)
+    
+    return RiskItemList(total=total, items=item_list)
 
 
 @router.put("/items/{item_id}", response_model=RiskItemResponse)
