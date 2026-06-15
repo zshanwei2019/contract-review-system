@@ -73,6 +73,7 @@ class RiskItem(Base):
     review_task_id = Column(Integer, ForeignKey("review_tasks.id"))
     
     # 风险信息
+    title = Column(String(200))  # 风险标题
     risk_level = Column(Enum(RiskLevel), nullable=False)
     risk_category = Column(String(100))
     risk_description = Column(Text, nullable=False)

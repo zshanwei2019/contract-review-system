@@ -75,6 +75,7 @@ class RiskRuleList(BaseModel):
 
 
 class RiskItemBase(BaseModel):
+    title: Optional[str] = None
     risk_level: RiskLevel
     risk_category: Optional[str] = None
     risk_description: str
@@ -107,7 +108,8 @@ class RiskItemResponse(RiskItemBase):
     resolved_at: Optional[datetime] = None
     resolution_note: Optional[str] = None
     created_at: datetime
-
+    contract: Optional[dict] = None
+    
     class Config:
         from_attributes = True
 

@@ -215,6 +215,20 @@ async def init_risk_rules(
     
     created_count = 0
     
+    # 合同类型英文到中文的映射
+    contract_type_map = {
+        "procurement": "采购合同",
+        "sales": "销售合同",
+        "outsourcing": "外协合同",
+        "lease": "租赁合同",
+        "logistics": "物流合同",
+        "equipment": "设备合同",
+        "service": "服务合同",
+        "construction": "建设合同",
+        "nda": "保密合同",
+        "other": "其他合同",
+    }
+    
     # 创建风险分类（如果不存在）
     categories = {}
     cat_names = {
@@ -255,6 +269,10 @@ async def init_risk_rules(
             
             risk_level = "high" if rule["sev"] >= 0.7 else ("medium" if rule["sev"] >= 0.5 else "low")
             
+            # 转换合同类型为中文
+            cat_parts = rule["cat"].split(",")
+            contract_type = "、".join([contract_type_map.get(c, c) for c in cat_parts]) if rule["cat"] != "all" else None
+            
             new_rule = RiskRule(
                 category_id=category.id,
                 name=rule["name"],
@@ -265,7 +283,7 @@ async def init_risk_rules(
                 risk_level=RiskLevel(risk_level),
                 risk_score=int(rule["sev"] * 100),
                 suggestion=rule["sug"],
-                contract_type=rule["cat"] if rule["cat"] != "all" else None,
+                contract_type=contract_type,
                 is_active=True,
                 created_by=current_user.id,
             )

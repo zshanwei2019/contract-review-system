@@ -519,9 +519,12 @@ async def ai_review_contract(
             contract_id=contract.id,
             review_task_id=review_task.id,
             title=finding.get("title", "未命名风险"),
-            description=finding.get("description", ""),
+            risk_description=finding.get("description", ""),
             risk_level=finding.get("risk_level", "medium"),
-            risk_score=int(finding.get("risk_level", "medium") == "high") * 70 + int(finding.get("risk_level", "medium") == "medium") * 50 + 30,
+            risk_category=finding.get("category", "risk"),
+            clause_reference=finding.get("clause_reference"),
+            suggestion=finding.get("suggestion"),
+            legal_basis=finding.get("legal_basis"),
             is_resolved=False,
         )
         db.add(risk_item)
@@ -583,10 +586,15 @@ async def init_risk_items(
         opinions = opinions_result.scalars().all()
         
         for opinion in opinions:
+            # 从内容中提取标题
+            content = opinion.content or ""
+            title = content.split("\n")[0][:50] if content else "审查发现"
+            
             risk_item = RiskItem(
                 contract_id=contract.id,
                 review_task_id=review_task.id,
-                risk_description=opinion.content if opinion.content else "审查发现",
+                title=title,
+                risk_description=content,
                 risk_level=opinion.risk_level or "medium",
                 risk_category=opinion.opinion_type if opinion.opinion_type else "risk",
                 clause_reference=opinion.clause_reference,
