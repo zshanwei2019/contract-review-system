@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>风险规则</span>
-          <el-button type="primary" icon="Plus" @click="showDialog = true">新建规则</el-button>
+          <div>
+            <el-button type="success" icon="Refresh" @click="handleInitRules" :loading="initLoading">初始化规则</el-button>
+            <el-button type="primary" icon="Plus" @click="showDialog = true">新建规则</el-button>
+          </div>
         </div>
       </template>
       
@@ -68,6 +71,7 @@ import { risksApi } from '@/api/risks'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
+const initLoading = ref(false)
 const rules = ref<any[]>([])
 const categories = ref<any[]>([])
 const showDialog = ref(false)
@@ -103,6 +107,15 @@ const handleSave = async () => {
     showDialog.value = false
     fetchData()
   } catch { ElMessage.error('保存失败') }
+}
+
+const handleInitRules = async () => {
+  try {
+    initLoading.value = true
+    const res: any = await risksApi.initRules()
+    ElMessage.success(res.message || '初始化成功')
+    await fetchData()
+  } catch { ElMessage.error('初始化失败') } finally { initLoading.value = false }
 }
 
 onMounted(() => { fetchData() })

@@ -202,3 +202,110 @@ async def update_risk_item(
     await db.commit()
     await db.refresh(item)
     return item
+
+
+@router.post("/init-rules")
+async def init_risk_rules(
+    current_user: User = Depends(require_role("admin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """初始化23条行业风控规则和14种毒丸条款检测规则"""
+    from app.services.risk_rules_engine import INDUSTRY_RISK_RULES, POISON_PILL_PATTERNS
+    from datetime import datetime
+    
+    created_count = 0
+    
+    # 创建风险分类（如果不存在）
+    categories = {}
+    cat_names = {
+        "procurement": "采购类",
+        "sales": "销售类",
+        "outsourcing": "外协类",
+        "lease": "租赁类",
+        "logistics": "物流类",
+        "all": "通用类",
+    }
+    
+    for code, name in cat_names.items():
+        result = await db.execute(
+            select(RiskCategory).where(RiskCategory.code == code)
+        )
+        cat = result.scalar_one_or_none()
+        if not cat:
+            cat = RiskCategory(
+                name=name,
+                code=code,
+                is_active=True,
+                sort_order=list(cat_names.keys()).index(code),
+            )
+            db.add(cat)
+            await db.flush()
+        categories[code] = cat
+    
+    # 导入23条行业风控规则
+    for rule in INDUSTRY_RISK_RULES:
+        result = await db.execute(
+            select(RiskRule).where(RiskRule.code == rule["id"])
+        )
+        existing = result.scalar_one_or_none()
+        
+        if not existing:
+            cat_code = rule["cat"].split(",")[0] if rule["cat"] != "all" else "all"
+            category = categories.get(cat_code, categories["all"])
+            
+            risk_level = "high" if rule["sev"] >= 0.7 else ("medium" if rule["sev"] >= 0.5 else "low")
+            
+            new_rule = RiskRule(
+                category_id=category.id,
+                name=rule["name"],
+                code=rule["id"],
+                description=rule["desc"],
+                rule_type="keyword",
+                rule_config='{"check": "custom"}',
+                risk_level=RiskLevel(risk_level),
+                risk_score=int(rule["sev"] * 100),
+                suggestion=rule["sug"],
+                contract_type=rule["cat"] if rule["cat"] != "all" else None,
+                is_active=True,
+                created_by=current_user.id,
+            )
+            db.add(new_rule)
+            created_count += 1
+    
+    # 导入14种毒丸条款检测规则
+    for pp in POISON_PILL_PATTERNS:
+        result = await db.execute(
+            select(RiskRule).where(RiskRule.code == pp["id"])
+        )
+        existing = result.scalar_one_or_none()
+        
+        if not existing:
+            category = categories["all"]
+            
+            risk_level = "high" if pp["sev"] >= 0.7 else ("medium" if pp["sev"] >= 0.5 else "low")
+            
+            new_rule = RiskRule(
+                category_id=category.id,
+                name=pp["name"],
+                code=pp["id"],
+                description=f"毒丸条款检测 - {pp['type']}型",
+                rule_type="regex",
+                rule_config='{"pattern": "' + pp["pat"].replace('"', '\\"') + '"}',
+                risk_level=RiskLevel(risk_level),
+                risk_score=int(pp["sev"] * 100),
+                suggestion=f"检测到{pp['type']}型毒丸条款，请审查相关条款",
+                contract_type=None,
+                is_active=True,
+                created_by=current_user.id,
+            )
+            db.add(new_rule)
+            created_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"成功初始化{created_count}条风险规则",
+        "created_count": created_count,
+        "industry_rules": len(INDUSTRY_RISK_RULES),
+        "poison_pills": len(POISON_PILL_PATTERNS),
+    }

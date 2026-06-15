@@ -24,4 +24,8 @@ export const risksApi = {
   updateItem(id: number, data: any) {
     return request.put(`/risks/items/${id}`, data)
   },
+  
+  initRules() {
+    return request.post('/risks/init-rules')
+  },
 }
