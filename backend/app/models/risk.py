@@ -48,6 +48,12 @@ class RiskRule(Base):
     risk_level = Column(Enum(RiskLevel), nullable=False)
     risk_score = Column(Integer)  # 0-100
     
+    # 四维权重配置 (默认: severity=40%, likelihood=25%, financial=20%, responsibility=15%)
+    weight_severity = Column(Float, default=0.40)
+    weight_likelihood = Column(Float, default=0.25)
+    weight_financial = Column(Float, default=0.20)
+    weight_responsibility = Column(Float, default=0.15)
+    
     # 建议
     suggestion = Column(Text)
     legal_basis = Column(Text)
@@ -78,10 +84,26 @@ class RiskItem(Base):
     risk_category = Column(String(100))
     risk_description = Column(Text, nullable=False)
     
-    # 条款级定位（新增）
-    clause_text = Column(Text)  # 涉及的原合同条款文本
-    clause_location = Column(String(500))  # 条款位置描述（如"第3.2条"）
-    confidence = Column(Float, default=0.8)  # 置信度
+    # 条款定位
+    clause_text = Column(Text)  # 条款原文
+    clause_location = Column(String(500))  # 条款位置描述
+    confidence = Column(Float)  # AI识别置信度 0-1
+    
+    # === 风险量化评估字段（四维加权模型）===
+    # 四维评分 (0-100整数)
+    score_severity = Column(Integer)       # 严重性评分
+    score_likelihood = Column(Integer)     # 可能性评分
+    score_financial = Column(Integer)      # 财务风险敞口评分
+    score_responsibility = Column(Integer) # 责任不对称性评分
+    # 综合风险评分 (加权计算)
+    risk_score = Column(Integer)           # 0-100 综合评分
+    # 财务影响
+    potential_loss_min = Column(Float)     # 最小潜在损失(元)
+    potential_loss_max = Column(Float)     # 最大潜在损失(元)
+    loss_probability = Column(Float)       # 损失概率 0-1
+    expected_loss = Column(Float)          # 期望损失 = max * probability
+    # 量化分析详情
+    quantification_detail = Column(Text)   # JSON格式量化分析详情
     
     # 位置
     clause_reference = Column(String(200))  # 条款引用

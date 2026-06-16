@@ -38,6 +38,12 @@ const routes: RouteRecordRaw[] = [
             meta: { title: '新建合同' },
           },
           {
+            path: 'batch-upload',
+            name: 'BatchUpload',
+            component: () => import('@/views/contracts/batch-upload.vue'),
+            meta: { title: '批量上传' },
+          },
+          {
             path: ':id',
             name: 'ContractDetail',
             component: () => import('@/views/contracts/detail.vue'),

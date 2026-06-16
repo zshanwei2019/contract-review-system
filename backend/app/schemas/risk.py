@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 from app.models.risk import RiskLevel
@@ -43,7 +43,10 @@ class RiskRuleBase(BaseModel):
 
 
 class RiskRuleCreate(RiskRuleBase):
-    pass
+    weight_severity: Optional[float] = 0.40
+    weight_likelihood: Optional[float] = 0.25
+    weight_financial: Optional[float] = 0.20
+    weight_responsibility: Optional[float] = 0.15
 
 
 class RiskRuleUpdate(BaseModel):
@@ -55,6 +58,10 @@ class RiskRuleUpdate(BaseModel):
     suggestion: Optional[str] = None
     legal_basis: Optional[str] = None
     is_active: Optional[bool] = None
+    weight_severity: Optional[float] = None
+    weight_likelihood: Optional[float] = None
+    weight_financial: Optional[float] = None
+    weight_responsibility: Optional[float] = None
 
 
 class RiskRuleResponse(RiskRuleBase):
@@ -64,6 +71,10 @@ class RiskRuleResponse(RiskRuleBase):
     created_at: datetime
     updated_at: datetime
     category_name: Optional[str] = None
+    weight_severity: Optional[float] = None
+    weight_likelihood: Optional[float] = None
+    weight_financial: Optional[float] = None
+    weight_responsibility: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -75,13 +86,9 @@ class RiskRuleList(BaseModel):
 
 
 class RiskItemBase(BaseModel):
-    title: Optional[str] = None
     risk_level: RiskLevel
     risk_category: Optional[str] = None
     risk_description: str
-    clause_text: Optional[str] = None  # 涉及的原合同条款文本
-    clause_location: Optional[str] = None  # 条款位置描述
-    confidence: float = 0.8  # 置信度
     clause_reference: Optional[str] = None
     suggestion: Optional[str] = None
     legal_basis: Optional[str] = None
@@ -91,12 +98,35 @@ class RiskItemCreate(RiskItemBase):
     contract_id: int
     rule_id: Optional[int] = None
     review_task_id: Optional[int] = None
+    clause_text: Optional[str] = None
+    clause_location: Optional[str] = None
+    confidence: Optional[float] = None
+    score_severity: Optional[int] = None
+    score_likelihood: Optional[int] = None
+    score_financial: Optional[int] = None
+    score_responsibility: Optional[int] = None
+    risk_score: Optional[int] = None
+    potential_loss_min: Optional[float] = None
+    potential_loss_max: Optional[float] = None
+    loss_probability: Optional[float] = None
+    expected_loss: Optional[float] = None
+    quantification_detail: Optional[Any] = None
 
 
 class RiskItemUpdate(BaseModel):
     is_confirmed: Optional[bool] = None
     is_resolved: Optional[bool] = None
     resolution_note: Optional[str] = None
+    score_severity: Optional[int] = None
+    score_likelihood: Optional[int] = None
+    score_financial: Optional[int] = None
+    score_responsibility: Optional[int] = None
+    risk_score: Optional[int] = None
+    potential_loss_min: Optional[float] = None
+    potential_loss_max: Optional[float] = None
+    loss_probability: Optional[float] = None
+    expected_loss: Optional[float] = None
+    quantification_detail: Optional[Any] = None
 
 
 class RiskItemResponse(RiskItemBase):
@@ -104,6 +134,19 @@ class RiskItemResponse(RiskItemBase):
     contract_id: int
     rule_id: Optional[int] = None
     review_task_id: Optional[int] = None
+    clause_text: Optional[str] = None
+    clause_location: Optional[str] = None
+    confidence: Optional[float] = None
+    score_severity: Optional[int] = None
+    score_likelihood: Optional[int] = None
+    score_financial: Optional[int] = None
+    score_responsibility: Optional[int] = None
+    risk_score: Optional[int] = None
+    potential_loss_min: Optional[float] = None
+    potential_loss_max: Optional[float] = None
+    loss_probability: Optional[float] = None
+    expected_loss: Optional[float] = None
+    quantification_detail: Optional[Any] = None
     page_number: Optional[int] = None
     is_confirmed: bool
     is_resolved: bool
@@ -111,12 +154,9 @@ class RiskItemResponse(RiskItemBase):
     resolved_at: Optional[datetime] = None
     resolution_note: Optional[str] = None
     created_at: datetime
-    contract: Optional[dict] = None
-    
+
     class Config:
         from_attributes = True
-        # 允许任意类型以支持序列化
-        arbitrary_types_allowed = True
 
 
 class RiskItemList(BaseModel):
@@ -131,3 +171,35 @@ class RiskAnalysisResult(BaseModel):
     risk_summary: str
     risk_items: List[RiskItemResponse]
     analyzed_at: datetime
+
+
+class RiskQuantificationRequest(BaseModel):
+    risk_item_id: int
+    contract_value: Optional[float] = None
+
+
+class RiskQuantificationResponse(BaseModel):
+    risk_item_id: int
+    risk_score: int
+    risk_level: str
+    score_severity: int
+    score_likelihood: int
+    score_financial: int
+    score_responsibility: int
+    potential_loss_min: Optional[float] = None
+    potential_loss_max: Optional[float] = None
+    loss_probability: Optional[float] = None
+    expected_loss: Optional[float] = None
+    quantification_detail: Optional[Any] = None
+
+
+class ContractRiskSummary(BaseModel):
+    contract_id: int
+    total_risks: int
+    high_risks: int
+    medium_risks: int
+    low_risks: int
+    overall_score: int
+    overall_level: str
+    total_expected_loss: float
+    risk_items: List[RiskItemResponse]

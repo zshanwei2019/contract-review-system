@@ -294,18 +294,30 @@ def _parse_xmind_xml(element, lines, depth):
 
 
 def _extract_image_ocr(file_path: str, max_length: int) -> str:
-    """OCR图片文字识别（中英文）"""
+    """OCR图片文字识别（中英文）- 使用EasyOCR"""
     try:
-        import pytesseract
-        from PIL import Image
+        import easyocr
         
-        img = Image.open(file_path)
-        # 中文简体+英文
-        text = pytesseract.image_to_string(img, lang='chi_sim+eng')
-        return text[:max_length]
+        # 初始化EasyOCR（中文简体+英文）
+        reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
+        
+        # 执行OCR识别
+        result = reader.readtext(file_path, detail=0)
+        
+        # 提取文本
+        full_text = '\n'.join(result)
+        return full_text[:max_length]
     except ImportError:
-        logger.warning("pytesseract/Pillow未安装，无法进行OCR识别")
-        return None
+        logger.warning("EasyOCR未安装，尝试使用pytesseract")
+        # 回退到tesseract
+        try:
+            import pytesseract
+            from PIL import Image
+            img = Image.open(file_path)
+            text = pytesseract.image_to_string(img, lang='chi_sim+eng')
+            return text[:max_length]
+        except:
+            return None
     except Exception as e:
         logger.error(f"OCR识别失败: {e}")
         return None

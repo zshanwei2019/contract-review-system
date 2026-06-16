@@ -32,4 +32,17 @@ export const risksApi = {
   initRules() {
     return request.post('/risks/init-rules')
   },
+
+  // === 风险量化评估 ===
+  quantifyItem(itemId: number) {
+    return request.post(`/risks/items/${itemId}/quantify`)
+  },
+
+  getContractRiskSummary(contractId: number) {
+    return request.get(`/risks/contracts/${contractId}/risk-summary`)
+  },
+
+  quantifyAllRisks(contractId: number) {
+    return request.post(`/risks/contracts/${contractId}/quantify-all`)
+  },
 }

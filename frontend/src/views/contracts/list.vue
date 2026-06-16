@@ -17,6 +17,9 @@
             <el-button type="primary" icon="Plus" @click="router.push('/contracts/create')">
               新建合同
             </el-button>
+            <el-button type="success" icon="Upload" @click="router.push('/contracts/batch-upload')">
+              批量上传
+            </el-button>
           </div>
         </div>
       </template>

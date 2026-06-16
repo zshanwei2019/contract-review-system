@@ -144,6 +144,50 @@
         </el-row>
       </div>
       
+      <!-- 风险量化汇总 -->
+      <div class="risk-quantification-section">
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">📊</span> 风险量化评估
+        </h3>
+        <div v-if="riskSummary" class="risk-summary">
+          <el-row :gutter="16">
+            <el-col :span="6">
+              <div class="summary-card" :class="riskSummary.overall_level">
+                <div class="summary-number">{{ riskSummary.overall_score }}</div>
+                <div class="summary-label">综合评分</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="summary-card high">
+                <div class="summary-number">{{ riskSummary.high_risks }}</div>
+                <div class="summary-label">高风险项</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="summary-card medium">
+                <div class="summary-number">{{ riskSummary.medium_risks }}</div>
+                <div class="summary-label">中风险项</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="summary-card loss">
+                <div class="summary-number">¥{{ formatMoney(riskSummary.total_expected_loss) }}</div>
+                <div class="summary-label">总期望损失</div>
+              </div>
+            </el-col>
+          </el-row>
+          <div class="summary-actions">
+            <el-button type="primary" size="small" @click="handleQuantifyAll" :loading="quantifyLoading">
+              批量量化评估
+            </el-button>
+            <el-button size="small" @click="router.push('/risks/items')">查看全部风险项</el-button>
+          </div>
+        </div>
+        <el-empty v-else description="暂无风险量化数据">
+          <el-button type="primary" @click="handleQuantifyAll" :loading="quantifyLoading">开始量化评估</el-button>
+        </el-empty>
+      </div>
+
       <!-- 审查记录 -->
       <div class="review-section">
         <h3>审查记录</h3>
@@ -381,6 +425,7 @@ import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
 import { agentApi } from '@/api/agent'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
+import { risksApi } from '@/api/risks'
 import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -405,6 +450,8 @@ const diffSummary = ref('')
 const showCompareDialog = ref(false)
 const compareData = ref<any>(null)
 const compareLoading = ref(false)
+const riskSummary = ref<any>(null)
+const quantifyLoading = ref(false)
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -422,6 +469,10 @@ const fetchContract = async () => {
     ])
     reviews.value = (reviewsRes as any).items || []
     versions.value = (versionsRes as any) || []
+    // 获取风险量化汇总
+    try {
+      riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
+    } catch { /* 暂无风险数据 */ }
   } catch {
     ElMessage.error('获取合同详情失败')
   } finally {
@@ -575,6 +626,21 @@ const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
   } catch (err: any) {
     ElMessage.error('导出失败')
   }
+}
+
+const formatMoney = (amount: number) => {
+  if (!amount) return '0'
+  if (amount >= 10000) return (amount / 10000).toFixed(1) + '万'
+  return amount.toLocaleString()
+}
+
+const handleQuantifyAll = async () => {
+  quantifyLoading.value = true
+  try {
+    await risksApi.quantifyAllRisks(contractId.value)
+    riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
+    ElMessage.success('量化评估完成')
+  } catch { ElMessage.error('量化评估失败') } finally { quantifyLoading.value = false }
 }
 
 const handleCompare = async () => {
@@ -820,6 +886,57 @@ onMounted(() => {
   margin: 0;
   color: #606266;
   line-height: 1.6;
+}
+
+.risk-quantification-section {
+  margin-top: 24px;
+  padding: 24px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 12px;
+  border: 1px solid #bae6fd;
+}
+
+.risk-quantification-section h3 {
+  margin: 0 0 20px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.risk-summary {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary-card {
+  text-align: center;
+  padding: 16px;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.summary-card.high { border-left: 4px solid #F56C6C; }
+.summary-card.medium { border-left: 4px solid #E6A23C; }
+.summary-card.low { border-left: 4px solid #67C23A; }
+.summary-card.loss { border-left: 4px solid #909399; }
+
+.summary-number {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.summary-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
 }
 
 /* 响应式调整 */

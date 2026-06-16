@@ -90,10 +90,9 @@ async def list_contracts(
 
 
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
-@router.post("", response_model=ContractResponse)
 async def create_contract(
     title: str = Form(...),
-    contract_type: ContractType = Form(ContractType.OTHER),
+    contract_type: Optional[str] = Form("other"),
     party_a: Optional[str] = Form(None),
     party_b: Optional[str] = Form(None),
     amount: Optional[float] = Form(None),
@@ -148,10 +147,16 @@ async def create_contract(
         from app.services.ai_review import extract_contract_info
         extracted_info = await extract_contract_info(file_path)
     
+    # 处理合同类型
+    try:
+        contract_type_enum = ContractType(contract_type) if contract_type else ContractType.OTHER
+    except ValueError:
+        contract_type_enum = ContractType.OTHER
+    
     contract = Contract(
         contract_no=generate_contract_no(),
         title=title or (extracted_info.get("title") if extracted_info else title),
-        contract_type=contract_type or (ContractType(extracted_info.get("contract_type")) if extracted_info and extracted_info.get("contract_type") else ContractType.OTHER),
+        contract_type=contract_type_enum or (ContractType(extracted_info.get("contract_type")) if extracted_info and extracted_info.get("contract_type") else ContractType.OTHER),
         party_a=party_a or (extracted_info.get("party_a") if extracted_info else None),
         party_b=party_b or (extracted_info.get("party_b") if extracted_info else None),
         amount=amount or (extracted_info.get("amount") if extracted_info else None),
