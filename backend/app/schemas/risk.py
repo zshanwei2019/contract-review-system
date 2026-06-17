@@ -98,9 +98,11 @@ class RiskItemCreate(RiskItemBase):
     contract_id: int
     rule_id: Optional[int] = None
     review_task_id: Optional[int] = None
+    # 条款定位
     clause_text: Optional[str] = None
     clause_location: Optional[str] = None
     confidence: Optional[float] = None
+    # 量化评估
     score_severity: Optional[int] = None
     score_likelihood: Optional[int] = None
     score_financial: Optional[int] = None
@@ -117,6 +119,7 @@ class RiskItemUpdate(BaseModel):
     is_confirmed: Optional[bool] = None
     is_resolved: Optional[bool] = None
     resolution_note: Optional[str] = None
+    # 量化评估更新
     score_severity: Optional[int] = None
     score_likelihood: Optional[int] = None
     score_financial: Optional[int] = None
@@ -134,9 +137,11 @@ class RiskItemResponse(RiskItemBase):
     contract_id: int
     rule_id: Optional[int] = None
     review_task_id: Optional[int] = None
+    # 条款定位
     clause_text: Optional[str] = None
     clause_location: Optional[str] = None
     confidence: Optional[float] = None
+    # 量化评估
     score_severity: Optional[int] = None
     score_likelihood: Optional[int] = None
     score_financial: Optional[int] = None
@@ -147,7 +152,9 @@ class RiskItemResponse(RiskItemBase):
     loss_probability: Optional[float] = None
     expected_loss: Optional[float] = None
     quantification_detail: Optional[Any] = None
+    # 位置
     page_number: Optional[int] = None
+    # 状态
     is_confirmed: bool
     is_resolved: bool
     resolved_by: Optional[int] = None
@@ -173,12 +180,16 @@ class RiskAnalysisResult(BaseModel):
     analyzed_at: datetime
 
 
+# === 风险量化专用Schema ===
+
 class RiskQuantificationRequest(BaseModel):
+    """风险量化评估请求"""
     risk_item_id: int
-    contract_value: Optional[float] = None
+    contract_value: Optional[float] = None  # 合同金额，用于估算财务影响
 
 
 class RiskQuantificationResponse(BaseModel):
+    """风险量化评估响应"""
     risk_item_id: int
     risk_score: int
     risk_level: str
@@ -194,6 +205,7 @@ class RiskQuantificationResponse(BaseModel):
 
 
 class ContractRiskSummary(BaseModel):
+    """合同风险汇总"""
     contract_id: int
     total_risks: int
     high_risks: int

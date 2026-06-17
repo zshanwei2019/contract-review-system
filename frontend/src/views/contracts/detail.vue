@@ -146,9 +146,7 @@
       
       <!-- 风险量化汇总 -->
       <div class="risk-quantification-section">
-        <h3 style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">📊</span> 风险量化评估
-        </h3>
+        <h3>📊 风险量化评估</h3>
         <div v-if="riskSummary" class="risk-summary">
           <el-row :gutter="16">
             <el-col :span="6">
@@ -177,14 +175,12 @@
             </el-col>
           </el-row>
           <div class="summary-actions">
-            <el-button type="primary" size="small" @click="handleQuantifyAll" :loading="quantifyLoading">
-              批量量化评估
-            </el-button>
+            <el-button type="primary" size="small" @click="handleQuantifyAll">批量量化评估</el-button>
             <el-button size="small" @click="router.push('/risks/items')">查看全部风险项</el-button>
           </div>
         </div>
         <el-empty v-else description="暂无风险量化数据">
-          <el-button type="primary" @click="handleQuantifyAll" :loading="quantifyLoading">开始量化评估</el-button>
+          <el-button type="primary" @click="handleQuantifyAll">开始量化评估</el-button>
         </el-empty>
       </div>
 
@@ -423,7 +419,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
-import { agentApi } from '@/api/agent'
+import { risksApi } from '@/api/risks'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
 import { risksApi } from '@/api/risks'
 import type { ContractType, ContractStatus } from '@/types/contract'
@@ -437,21 +433,7 @@ const aiReviewing = ref(false)
 const contract = ref<any>({})
 const reviews = ref<any[]>([])
 const versions = ref<any[]>([])
-const showAiResult = ref(false)
-const aiResult = ref<any>({})
-const modificationSuggestions = ref<any[]>([])
-const showModificationDialog = ref(false)
-const selectedSuggestions = ref<string[]>([])
-const applyingModifications = ref(false)
-const modificationLoading = ref(false)
-const showModifiedContent = ref(false)
-const modifiedContent = ref('')
-const diffSummary = ref('')
-const showCompareDialog = ref(false)
-const compareData = ref<any>(null)
-const compareLoading = ref(false)
 const riskSummary = ref<any>(null)
-const quantifyLoading = ref(false)
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -467,8 +449,8 @@ const fetchContract = async () => {
       reviewsApi.list({ contract_id: contractId.value }),
       contractsApi.getVersions(contractId.value),
     ])
-    reviews.value = (reviewsRes as any).items || []
-    versions.value = (versionsRes as any) || []
+    reviews.value = reviewsRes.items || []
+    versions.value = versionsRes || []
     // 获取风险量化汇总
     try {
       riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
@@ -489,6 +471,20 @@ const handleSubmit = async () => {
   } catch {
     ElMessage.error('提交失败')
   }
+}
+
+const formatMoney = (amount: number) => {
+  if (!amount) return '0'
+  if (amount >= 10000) return (amount / 10000).toFixed(1) + '万'
+  return amount.toLocaleString()
+}
+
+const handleQuantifyAll = async () => {
+  try {
+    await risksApi.quantifyAllRisks(contractId.value)
+    riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
+    ElMessage.success('量化评估完成')
+  } catch { ElMessage.error('量化评估失败') }
 }
 
 const handleReview = () => {
@@ -927,6 +923,42 @@ onMounted(() => {
   color: #333;
 }
 
+.risk-quantification-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+}
+
+.risk-quantification-section h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.risk-summary {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary-card {
+  text-align: center;
+  padding: 12px;
+  border-radius: 8px;
+  background: white;
+}
+
+.summary-card.high { border-left: 4px solid #F56C6C; }
+.summary-card.medium { border-left: 4px solid #E6A23C; }
+.summary-card.low { border-left: 4px solid #67C23A; }
+.summary-card.loss { border-left: 4px solid #909399; }
+
+.summary-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
 .summary-label {
   font-size: 12px;
   color: #999;
@@ -934,68 +966,8 @@ onMounted(() => {
 }
 
 .summary-actions {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   gap: 8px;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .card-header {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .header-actions {
-    width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .info-section :deep(.el-descriptions__label) {
-    width: 80px;
-    min-width: 80px;
-  }
-}
-
-/* 对比面板样式 */
-.compare-panel {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.compare-header {
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #ebeef5;
-  display: flex;
-  align-items: center;
-}
-
-.compare-content {
-  padding: 16px;
-  max-height: 60vh;
-  overflow-y: auto;
-  line-height: 1.8;
-  font-size: 14px;
-}
-
-.compare-content :deep(h1),
-.compare-content :deep(h2),
-.compare-content :deep(h3) {
-  margin: 16px 0 8px;
-  color: #303133;
-}
-
-.compare-content :deep(strong) {
-  color: #409eff;
-}
-
-.compare-content :deep(.highlight) {
-  background-color: #fdf6ec;
-  padding: 2px 4px;
-  border-radius: 2px;
 }
 </style>

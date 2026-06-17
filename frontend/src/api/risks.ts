@@ -24,14 +24,6 @@ export const risksApi = {
   updateItem(id: number, data: any) {
     return request.put(`/risks/items/${id}`, data)
   },
-  
-  initItems() {
-    return request.post('/contracts/init-risk-items')
-  },
-  
-  initRules() {
-    return request.post('/risks/init-rules')
-  },
 
   // === 风险量化评估 ===
   quantifyItem(itemId: number) {

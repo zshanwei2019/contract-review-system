@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, Float, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -84,13 +84,18 @@ class RiskItem(Base):
     risk_category = Column(String(100))
     risk_description = Column(Text, nullable=False)
     
-    # 条款定位
+    # 条款定位 (from previous session)
     clause_text = Column(Text)  # 条款原文
     clause_location = Column(String(500))  # 条款位置描述
     confidence = Column(Float)  # AI识别置信度 0-1
     
-    # === 风险量化评估字段（四维加权模型）===
-    # 四维评分 (0-100整数)
+    # 位置
+    clause_reference = Column(String(200))  # 条款引用
+    page_number = Column(Integer)
+    position = Column(Text)  # JSON格式位置信息
+    
+    # === 风险量化评估字段 ===
+    # 四维评分 (0-100)
     score_severity = Column(Integer)       # 严重性评分
     score_likelihood = Column(Integer)     # 可能性评分
     score_financial = Column(Integer)      # 财务风险敞口评分
@@ -103,12 +108,7 @@ class RiskItem(Base):
     loss_probability = Column(Float)       # 损失概率 0-1
     expected_loss = Column(Float)          # 期望损失 = max * probability
     # 量化分析详情
-    quantification_detail = Column(Text)   # JSON格式量化分析详情
-    
-    # 位置
-    clause_reference = Column(String(200))  # 条款引用
-    page_number = Column(Integer)
-    position = Column(Text)  # JSON格式位置信息
+    quantification_detail = Column(JSON)   # JSON格式量化分析详情
     
     # 建议
     suggestion = Column(Text)

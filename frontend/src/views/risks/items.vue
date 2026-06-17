@@ -2,12 +2,9 @@
   <div class="risk-items">
     <el-card shadow="hover">
       <template #header>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="card-header">
           <span>风险项列表</span>
-          <div style="display: flex; gap: 8px;">
-            <el-tag type="info" size="small">四维加权评估模型</el-tag>
-            <el-button type="success" icon="Refresh" @click="handleInitItems" :loading="initLoading">初始化风险项</el-button>
-          </div>
+          <el-tag type="info" size="small">四维加权评估模型</el-tag>
         </div>
       </template>
       
@@ -192,12 +189,12 @@
           <el-divider />
           <h4>📜 相关条款</h4>
           <div class="clause-location">
-            📍 {{ currentItem.clause_location || '未知位置' }}
+            <el-icon><Location /></el-icon> {{ currentItem.clause_location || '未知位置' }}
             <el-tag v-if="currentItem.confidence" size="small" type="info" style="margin-left: 8px">
               置信度: {{ (currentItem.confidence * 100).toFixed(0) }}%
             </el-tag>
           </div>
-          <div class="clause-text-block">{{ currentItem.clause_text }}</div>
+          <div class="clause-text">{{ currentItem.clause_text }}</div>
         </div>
       </div>
       <template #footer>
@@ -211,6 +208,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { risksApi } from '@/api/risks'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Location } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
+
 const loading = ref(false)
 const initLoading = ref(false)
 const items = ref<any[]>([])
@@ -244,10 +244,11 @@ const getScoreColor = (score: number) => {
 }
 
 const formatMoney = (amount: number) => {
-  if (!amount) return '0'
   if (amount >= 10000) return (amount / 10000).toFixed(1) + '万'
   return amount.toLocaleString()
 }
+
+const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm')
 
 const fetchItems = async () => {
   loading.value = true
@@ -271,7 +272,8 @@ const handleRowClick = (row: any) => {
 const handleQuantify = async (row: any) => {
   try {
     ElMessage.info('正在进行量化评估...')
-    const res: any = await risksApi.quantifyItem(row.id)
+    const res = await risksApi.quantifyItem(row.id)
+    // 更新列表中的数据
     const idx = items.value.findIndex(i => i.id === row.id)
     if (idx >= 0) items.value[idx] = res
     currentItem.value = res
@@ -302,6 +304,7 @@ onMounted(() => { fetchItems() })
 </script>
 
 <style scoped>
+.card-header { display: flex; align-items: center; justify-content: space-between; }
 .search-bar { display: flex; gap: 12px; margin-bottom: 16px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
 
@@ -317,8 +320,10 @@ onMounted(() => { fetchItems() })
 .loss-range { color: #F56C6C; font-weight: 500; }
 .expected-loss { color: #666; margin-top: 4px; }
 .expected-loss strong { color: #E6A23C; }
+
 .no-data { color: #ccc; }
 
+/* 量化详情弹窗 */
 .quantification-detail { padding: 0 8px; }
 .detail-header { display: flex; align-items: center; justify-content: space-between; }
 .overall-score { text-align: center; }
@@ -336,5 +341,5 @@ onMounted(() => { fetchItems() })
 .dim-card-weight { font-size: 11px; color: #67C23A; margin-top: 2px; }
 
 .clause-location { display: flex; align-items: center; gap: 4px; color: #409EFF; font-size: 13px; margin-bottom: 8px; }
-.clause-text-block { background: #f5f7fa; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; border-left: 3px solid #409EFF; }
+.clause-text { background: #f5f7fa; padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.6; border-left: 3px solid #409EFF; }
 </style>

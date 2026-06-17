@@ -48,3 +48,6 @@ alembic/versions/*.py
 
 # Redis
 dump.rdb
+
+# TypeScript build info
+*.tsbuildinfo

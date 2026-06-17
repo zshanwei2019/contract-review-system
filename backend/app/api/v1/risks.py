@@ -12,7 +12,7 @@ from app.schemas.risk import (
     RiskRuleCreate, RiskRuleUpdate, RiskRuleResponse, RiskRuleList,
     RiskCategoryCreate, RiskCategoryResponse,
     RiskItemCreate, RiskItemUpdate, RiskItemResponse, RiskItemList,
-    ContractRiskSummary,
+    RiskQuantificationRequest, RiskQuantificationResponse, ContractRiskSummary,
 )
 from app.services.risk_quantification import (
     calculate_risk_score, determine_risk_level, calculate_expected_loss,
@@ -71,9 +71,15 @@ async def list_risk_rules(
     if is_active is not None:
         query = query.where(RiskRule.is_active == is_active)
         count_query = count_query.where(RiskRule.is_active == is_active)
-    total = (await db.execute(count_query)).scalar()
-    query = query.order_by(RiskRule.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    rules = (await db.execute(query)).scalars().all()
+    
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    query = query.order_by(RiskRule.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    rules = result.scalars().all()
+    
     return RiskRuleList(total=total, items=rules)
 
 
@@ -97,10 +103,14 @@ async def update_risk_rule(
     current_user: User = Depends(require_role("admin", "superadmin")),
     db: AsyncSession = Depends(get_db),
 ):
-    rule = (await db.execute(select(RiskRule).where(RiskRule.id == rule_id))).scalar_one_or_none()
+    """更新风险规则"""
+    result = await db.execute(select(RiskRule).where(RiskRule.id == rule_id))
+    rule = result.scalar_one_or_none()
     if not rule:
-        raise HTTPException(status_code=404, detail="风险规则不存在")
-    for field, value in rule_data.model_dump(exclude_unset=True).items():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风险规则不存在")
+    
+    update_data = rule_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(rule, field, value)
     await db.commit()
     await db.refresh(rule)
@@ -128,9 +138,15 @@ async def list_risk_items(
     if is_resolved is not None:
         query = query.where(RiskItem.is_resolved == is_resolved)
         count_query = count_query.where(RiskItem.is_resolved == is_resolved)
-    total = (await db.execute(count_query)).scalar()
-    query = query.order_by(RiskItem.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    items = (await db.execute(query)).scalars().all()
+    
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    query = query.order_by(RiskItem.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
     return RiskItemList(total=total, items=items)
 
 
@@ -141,10 +157,14 @@ async def update_risk_item(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = (await db.execute(select(RiskItem).where(RiskItem.id == item_id))).scalar_one_or_none()
+    """更新风险项"""
+    result = await db.execute(select(RiskItem).where(RiskItem.id == item_id))
+    item = result.scalar_one_or_none()
     if not item:
-        raise HTTPException(status_code=404, detail="风险项不存在")
-    for field, value in item_data.model_dump(exclude_unset=True).items():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风险项不存在")
+    
+    update_data = item_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(item, field, value)
     if item_data.is_resolved:
         item.resolved_by = current_user.id
@@ -162,14 +182,20 @@ async def quantify_risk_item(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """对风险项进行量化评估"""
-    item = (await db.execute(select(RiskItem).where(RiskItem.id == item_id))).scalar_one_or_none()
+    """
+    对风险项进行量化评估
+    自动计算四维评分、综合评分、财务影响
+    """
+    result = await db.execute(select(RiskItem).where(RiskItem.id == item_id))
+    item = result.scalar_one_or_none()
     if not item:
-        raise HTTPException(status_code=404, detail="风险项不存在")
-
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风险项不存在")
+    
+    # 获取关联规则的权重配置
     weights = None
     if item.rule_id:
-        rule = (await db.execute(select(RiskRule).where(RiskRule.id == item.rule_id))).scalar_one_or_none()
+        rule_result = await db.execute(select(RiskRule).where(RiskRule.id == item.rule_id))
+        rule = rule_result.scalar_one_or_none()
         if rule:
             weights = {
                 "severity": rule.weight_severity or 0.40,
@@ -177,22 +203,32 @@ async def quantify_risk_item(
                 "financial": rule.weight_financial or 0.20,
                 "responsibility": rule.weight_responsibility or 0.15,
             }
-
+    
+    # 如果已有四维评分，直接计算
     if item.score_severity is not None:
         risk_score = calculate_risk_score(
             item.score_severity, item.score_likelihood or 0,
-            item.score_financial or 0, item.score_responsibility or 0, weights,
+            item.score_financial or 0, item.score_responsibility or 0,
+            weights,
         )
         item.risk_score = risk_score
         item.risk_level = RiskLevel(determine_risk_level(risk_score))
+        
+        # 计算期望损失
         if item.potential_loss_max and item.loss_probability:
             item.expected_loss = calculate_expected_loss(item.potential_loss_max, item.loss_probability)
-        item.quantification_detail = str(generate_quantification_detail(
+        
+        # 生成量化详情
+        item.quantification_detail = generate_quantification_detail(
             item.score_severity, item.score_likelihood or 0,
-            item.score_financial or 0, item.score_responsibility or 0, risk_score, weights,
-        ))
+            item.score_financial or 0, item.score_responsibility or 0,
+            risk_score, weights,
+        )
     else:
+        # 如果没有评分，基于风险等级进行基础估算
         level = item.risk_level.value if hasattr(item.risk_level, 'value') else item.risk_level
+        
+        # 基础评分映射
         base_scores = {
             "high": {"severity": 80, "likelihood": 70, "financial": 75, "responsibility": 65},
             "medium": {"severity": 55, "likelihood": 45, "financial": 50, "responsibility": 40},
@@ -204,19 +240,29 @@ async def quantify_risk_item(
         item.score_likelihood = scores["likelihood"]
         item.score_financial = scores["financial"]
         item.score_responsibility = scores["responsibility"]
+        
         risk_score = calculate_risk_score(
-            scores["severity"], scores["likelihood"], scores["financial"], scores["responsibility"], weights,
+            scores["severity"], scores["likelihood"],
+            scores["financial"], scores["responsibility"],
+            weights,
         )
         item.risk_score = risk_score
-        fin = estimate_financial_impact(level)
-        item.potential_loss_min = fin["potential_loss_min"]
-        item.potential_loss_max = fin["potential_loss_max"]
-        item.loss_probability = fin["loss_probability"]
-        item.expected_loss = calculate_expected_loss(fin["potential_loss_max"], fin["loss_probability"])
-        item.quantification_detail = str(generate_quantification_detail(
-            scores["severity"], scores["likelihood"], scores["financial"], scores["responsibility"], risk_score, weights,
-        ))
-
+        
+        # 估算财务影响
+        fin_impact = estimate_financial_impact(level)
+        item.potential_loss_min = fin_impact["potential_loss_min"]
+        item.potential_loss_max = fin_impact["potential_loss_max"]
+        item.loss_probability = fin_impact["loss_probability"]
+        item.expected_loss = calculate_expected_loss(
+            fin_impact["potential_loss_max"], fin_impact["loss_probability"]
+        )
+        
+        item.quantification_detail = generate_quantification_detail(
+            scores["severity"], scores["likelihood"],
+            scores["financial"], scores["responsibility"],
+            risk_score, weights,
+        )
+    
     await db.commit()
     await db.refresh(item)
     return item
@@ -228,12 +274,17 @@ async def get_contract_risk_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    items = (await db.execute(
+    """获取合同风险汇总"""
+    result = await db.execute(
         select(RiskItem).where(RiskItem.contract_id == contract_id)
-    )).scalars().all()
+    )
+    items = result.scalars().all()
+    
     high_count = sum(1 for i in items if i.risk_level == RiskLevel.HIGH)
     medium_count = sum(1 for i in items if i.risk_level == RiskLevel.MEDIUM)
     low_count = sum(1 for i in items if i.risk_level == RiskLevel.LOW)
+    
+    # 计算合同综合风险评分
     if items:
         scores = [i.risk_score for i in items if i.risk_score is not None]
         overall_score = max(scores) if scores else 0
@@ -241,11 +292,19 @@ async def get_contract_risk_summary(
     else:
         overall_score = 0
         total_expected_loss = 0
+    
+    overall_level = determine_risk_level(overall_score)
+    
     return ContractRiskSummary(
-        contract_id=contract_id, total_risks=len(items),
-        high_risks=high_count, medium_risks=medium_count, low_risks=low_count,
-        overall_score=overall_score, overall_level=determine_risk_level(overall_score),
-        total_expected_loss=total_expected_loss, risk_items=items,
+        contract_id=contract_id,
+        total_risks=len(items),
+        high_risks=high_count,
+        medium_risks=medium_count,
+        low_risks=low_count,
+        overall_score=overall_score,
+        overall_level=overall_level,
+        total_expected_loss=total_expected_loss,
+        risk_items=items,
     )
 
 
@@ -255,12 +314,18 @@ async def quantify_all_risks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    items = (await db.execute(
+    """批量量化合同下所有风险项"""
+    result = await db.execute(
         select(RiskItem).where(RiskItem.contract_id == contract_id)
-    )).scalars().all()
+    )
+    items = result.scalars().all()
+    
     if not items:
         raise HTTPException(status_code=404, detail="该合同无风险项")
+    
+    quantified = []
     for item in items:
+        # 复用单个量化逻辑
         level = item.risk_level.value if hasattr(item.risk_level, 'value') else item.risk_level
         base_scores = {
             "high": {"severity": 80, "likelihood": 70, "financial": 75, "responsibility": 65},
@@ -269,14 +334,17 @@ async def quantify_all_risks(
             "none": {"severity": 5, "likelihood": 5, "financial": 5, "responsibility": 5},
         }
         scores = base_scores.get(level, base_scores["low"])
+        
         if item.score_severity is None:
             item.score_severity = scores["severity"]
             item.score_likelihood = scores["likelihood"]
             item.score_financial = scores["financial"]
             item.score_responsibility = scores["responsibility"]
+        
         weights = None
         if item.rule_id:
-            rule = (await db.execute(select(RiskRule).where(RiskRule.id == item.rule_id))).scalar_one_or_none()
+            rule_result = await db.execute(select(RiskRule).where(RiskRule.id == item.rule_id))
+            rule = rule_result.scalar_one_or_none()
             if rule:
                 weights = {
                     "severity": rule.weight_severity or 0.40,
@@ -284,22 +352,36 @@ async def quantify_all_risks(
                     "financial": rule.weight_financial or 0.20,
                     "responsibility": rule.weight_responsibility or 0.15,
                 }
+        
         risk_score = calculate_risk_score(
             item.score_severity, item.score_likelihood or 0,
-            item.score_financial or 0, item.score_responsibility or 0, weights,
+            item.score_financial or 0, item.score_responsibility or 0,
+            weights,
         )
         item.risk_score = risk_score
+        
         if item.potential_loss_max and item.loss_probability:
             item.expected_loss = calculate_expected_loss(item.potential_loss_max, item.loss_probability)
         else:
-            fin = estimate_financial_impact(level)
-            item.potential_loss_min = fin["potential_loss_min"]
-            item.potential_loss_max = fin["potential_loss_max"]
-            item.loss_probability = fin["loss_probability"]
-            item.expected_loss = calculate_expected_loss(fin["potential_loss_max"], fin["loss_probability"])
-        item.quantification_detail = str(generate_quantification_detail(
+            fin_impact = estimate_financial_impact(level)
+            item.potential_loss_min = fin_impact["potential_loss_min"]
+            item.potential_loss_max = fin_impact["potential_loss_max"]
+            item.loss_probability = fin_impact["loss_probability"]
+            item.expected_loss = calculate_expected_loss(
+                fin_impact["potential_loss_max"], fin_impact["loss_probability"]
+            )
+        
+        item.quantification_detail = generate_quantification_detail(
             item.score_severity, item.score_likelihood or 0,
-            item.score_financial or 0, item.score_responsibility or 0, risk_score, weights,
-        ))
+            item.score_financial or 0, item.score_responsibility or 0,
+            risk_score, weights,
+        )
+        quantified.append(item)
+    
     await db.commit()
-    return {"contract_id": contract_id, "quantified_count": len(items), "message": f"已量化 {len(items)} 个风险项"}
+    
+    return {
+        "contract_id": contract_id,
+        "quantified_count": len(quantified),
+        "message": f"已量化 {len(quantified)} 个风险项",
+    }
