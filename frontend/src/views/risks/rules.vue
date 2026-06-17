@@ -19,7 +19,11 @@
             <el-tag :type="getRiskColor(row.risk_level)" size="small">{{ getRiskLabel(row.risk_level) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="contract_type" label="适用类型" width="120" />
+        <el-table-column label="适用类型" width="140">
+          <template #default="{ row }">
+            <el-tag size="small" type="primary">{{ formatContractType(row.contract_type) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="is_active" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
@@ -69,6 +73,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { risksApi } from '@/api/risks'
 import { ElMessage } from 'element-plus'
+import { formatRiskRuleContractType, riskLevelTagType, riskLevelLabels } from '@/types/risk'
 
 const loading = ref(false)
 const initLoading = ref(false)
@@ -78,8 +83,9 @@ const showDialog = ref(false)
 const editingRule = ref<any>(null)
 const form = reactive({ name: '', category_id: null, risk_level: 'medium', description: '', rule_expression: '' })
 
-const getRiskColor = (level: string) => ({ high: 'danger', medium: 'warning', low: 'success' }[level] || 'info') as any
-const getRiskLabel = (level: string) => ({ high: '高风险', medium: '中风险', low: '低风险' }[level] || level)
+const getRiskColor = (level: string) => riskLevelTagType[level] || 'info' as any
+const getRiskLabel = (level: string) => riskLevelLabels[level] || level
+const formatContractType = (value: string | null) => formatRiskRuleContractType(value)
 
 const fetchData = async () => {
   loading.value = true
