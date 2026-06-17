@@ -387,316 +387,118 @@ async def quantify_all_risks(
     }
 
 
+
+
 # ============================================================
-# 初始化默认风险规则
+# 初始化23条行业风控规则和14种毒丸条款 (远端 9202117 设计)
 # ============================================================
-INIT_RISK_CATEGORIES = [
-  {
-    "code": "FINANCIAL",
-    "name": "财务风险",
-    "icon": "Money",
-    "color": "#F56C6C",
-    "description": "付款、价款、税务等财务相关风险",
-    "sort_order": 1
-  },
-  {
-    "code": "BREACH",
-    "name": "违约风险",
-    "icon": "Warning",
-    "color": "#E6A23C",
-    "description": "违约金、赔偿、履约等风险",
-    "sort_order": 2
-  },
-  {
-    "code": "COMPLIANCE",
-    "name": "合规风险",
-    "icon": "Lock",
-    "color": "#909399",
-    "description": "法律法规、行业标准合规风险",
-    "sort_order": 3
-  },
-  {
-    "code": "IP",
-    "name": "知识产权",
-    "icon": "Document",
-    "color": "#67C23A",
-    "description": "知识产权归属、侵权风险",
-    "sort_order": 4
-  },
-  {
-    "code": "CONFIDENTIALITY",
-    "name": "保密风险",
-    "icon": "View",
-    "color": "#409EFF",
-    "description": "商业秘密、保密条款风险",
-    "sort_order": 5
-  },
-  {
-    "code": "TERMINATION",
-    "name": "解除终止",
-    "icon": "CircleClose",
-    "color": "#F78989",
-    "description": "合同解除、终止条件风险",
-    "sort_order": 6
-  },
-  {
-    "code": "LIABILITY",
-    "name": "责任承担",
-    "icon": "User",
-    "color": "#9B59B6",
-    "description": "责任划分、连带风险",
-    "sort_order": 7
-  },
-  {
-    "code": "FORCE_MAJEURE",
-    "name": "不可抗力",
-    "icon": "Lightning",
-    "color": "#1ABC9C",
-    "description": "不可抗力界定与后果",
-    "sort_order": 8
-  }
-]
-
-INIT_RISK_RULES = [
-  {
-    "category": "FINANCIAL",
-    "code": "FIN-001",
-    "name": "付款周期过长",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"验收后 90 天付款\",\"90 日\",\"3 个月付款\"]}",
-    "risk_level": "high",
-    "risk_score": 70,
-    "description": "付款周期超过 60 天,资金占用风险高",
-    "suggestion": "建议缩短付款周期至 30-45 天,并约定分期付款节点",
-    "legal_basis": "《合同法》第六十条 全面履行原则"
-  },
-  {
-    "category": "FINANCIAL",
-    "code": "FIN-002",
-    "name": "未约定付款方式",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"付款方式\",\"支付方式\"]}",
-    "risk_level": "medium",
-    "risk_score": 50,
-    "description": "合同未明确约定具体付款方式",
-    "suggestion": "建议明确付款方式,如银行转账,并注明收款账户信息",
-    "legal_basis": "《民法典》第五百零九条"
-  },
-  {
-    "category": "BREACH",
-    "code": "BRE-001",
-    "name": "违约金比例过高",
-    "rule_type": "regex",
-    "rule_config": "{\"pattern\":\"违约金.{0,10}(30%|40%|50%)\"}",
-    "risk_level": "high",
-    "risk_score": 75,
-    "description": "违约金比例超过合同总金额 30%",
-    "suggestion": "建议违约金比例控制在 20-30% 以内",
-    "legal_basis": "《民法典》第五百八十五条 违约金约定"
-  },
-  {
-    "category": "BREACH",
-    "code": "BRE-002",
-    "name": "未约定逾期利息",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"逾期\",\"违约金\"]}",
-    "risk_level": "medium",
-    "risk_score": 55,
-    "description": "未约定逾期付款利息或计算方式",
-    "suggestion": "建议约定逾期利息按 LPR 计算",
-    "legal_basis": "最高人民法院司法解释"
-  },
-  {
-    "category": "COMPLIANCE",
-    "code": "COM-001",
-    "name": "合同主体资质不全",
-    "rule_type": "keyword",
-    "rule_config": "{\"required\":[\"营业执照\",\"资质证书\"]}",
-    "risk_level": "high",
-    "risk_score": 80,
-    "description": "未审查对方营业执照及行业资质",
-    "suggestion": "签约前审查营业执照、资质证书原件并保留复印件",
-    "legal_basis": "《民法典》第一百四十三条"
-  },
-  {
-    "category": "COMPLIANCE",
-    "code": "COM-002",
-    "name": "管辖法院约定不利",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"原告住所地\",\"甲方所在地\"]}",
-    "risk_level": "low",
-    "risk_score": 30,
-    "description": "约定由原告住所地或甲方所在地管辖",
-    "suggestion": "建议约定由我方所在地或合同签订地法院管辖",
-    "legal_basis": "《民事诉讼法》第三十五条"
-  },
-  {
-    "category": "IP",
-    "code": "IP-001",
-    "name": "知识产权归属不清",
-    "rule_type": "keyword",
-    "rule_config": "{\"required\":[\"知识产权\",\"归属\"]}",
-    "risk_level": "high",
-    "risk_score": 75,
-    "description": "未明确约定合同产生的知识产权归属",
-    "suggestion": "建议明确约定知识产权归哪方所有,以及使用许可范围",
-    "legal_basis": "《民法典》第八百四十七条"
-  },
-  {
-    "category": "IP",
-    "code": "IP-002",
-    "name": "侵权责任未约定",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"侵权\",\"责任\"]}",
-    "risk_level": "medium",
-    "risk_score": 50,
-    "description": "未约定第三方侵权时双方的责任承担方式",
-    "suggestion": "建议约定一方原因导致侵权的由该方承担全部责任",
-    "legal_basis": "《民法典》第一千一百六十八条"
-  },
-  {
-    "category": "CONFIDENTIALITY",
-    "code": "CON-001",
-    "name": "保密期限不足",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"保密期限\",\"保密期\"]}",
-    "risk_level": "medium",
-    "risk_score": 55,
-    "description": "保密期限不足 2 年,无法有效保护商业秘密",
-    "suggestion": "建议保密期限不少于 3-5 年,核心商业秘密永久保密",
-    "legal_basis": "《反不正当竞争法》第九条"
-  },
-  {
-    "category": "CONFIDENTIALITY",
-    "code": "CON-002",
-    "name": "保密范围过窄",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"保密信息\",\"商业秘密\"]}",
-    "risk_level": "medium",
-    "risk_score": 50,
-    "description": "保密信息定义范围过窄,可能遗漏重要信息",
-    "suggestion": "建议扩大保密信息范围,包括技术、经营、财务、人事等",
-    "legal_basis": "《反不正当竞争法》第九条"
-  },
-  {
-    "category": "TERMINATION",
-    "code": "TER-001",
-    "name": "解除条件过严",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"解除合同\",\"解除条件\"]}",
-    "risk_level": "medium",
-    "risk_score": 50,
-    "description": "解除条件约定过严,一旦对方违约难以解除",
-    "suggestion": "建议约定对方违约 30 日内未改正的,我方有权解除",
-    "legal_basis": "《民法典》第五百六十三条"
-  },
-  {
-    "category": "TERMINATION",
-    "code": "TER-002",
-    "name": "未约定合同终止后果",
-    "rule_type": "keyword",
-    "rule_config": "{\"required\":[\"终止\",\"结算\"]}",
-    "risk_level": "low",
-    "risk_score": 35,
-    "description": "未约定合同终止后的结算、交接等善后事宜",
-    "suggestion": "建议明确终止后的款项结算、资料交接、保密义务延续等",
-    "legal_basis": "《民法典》第五百六十六条"
-  },
-  {
-    "category": "LIABILITY",
-    "code": "LIA-001",
-    "name": "责任划分不明确",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"责任\",\"承担\"]}",
-    "risk_level": "medium",
-    "risk_score": 50,
-    "description": "双方责任划分不明确,易产生纠纷",
-    "suggestion": "建议分项列明双方责任,以及违约责任的具体承担方式",
-    "legal_basis": "《民法典》第五百零九条"
-  },
-  {
-    "category": "LIABILITY",
-    "code": "LIA-002",
-    "name": "连带责任约定",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"连带责任\",\"担保\"]}",
-    "risk_level": "high",
-    "risk_score": 70,
-    "description": "存在连带责任约定,加重我方责任",
-    "suggestion": "建议要求提供反担保,或明确连带责任的承担上限",
-    "legal_basis": "《民法典》第五百一十八条"
-  },
-  {
-    "category": "FORCE_MAJEURE",
-    "code": "FMA-001",
-    "name": "不可抗力范围过窄",
-    "rule_type": "keyword",
-    "rule_config": "{\"keywords\":[\"不可抗力\",\"自然灾害\"]}",
-    "risk_level": "medium",
-    "risk_score": 45,
-    "description": "不可抗力范围过窄,可能不包含疫情、政策变化等",
-    "suggestion": "建议参照《民法典》第一百八十条规定,扩大不可抗力范围",
-    "legal_basis": "《民法典》第一百八十条"
-  },
-  {
-    "category": "FORCE_MAJEURE",
-    "code": "FMA-002",
-    "name": "未约定通知义务",
-    "rule_type": "keyword",
-    "rule_config": "{\"required\":[\"通知\",\"证明\"]}",
-    "risk_level": "low",
-    "risk_score": 30,
-    "description": "未约定不可抗力发生后的通知义务和证明义务",
-    "suggestion": "建议约定不可抗力发生后 3 日内通知对方并提供证明",
-    "legal_basis": "《民法典》第五百九十条"
-  }
-]
-
-
-@router.post("/rules/init", response_model=dict)
-async def init_default_risk_rules(
+@router.post("/init-rules")
+async def init_risk_rules(
     current_user: User = Depends(require_role("admin", "superadmin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """初始化默认风险分类和规则 (幂等, 已存在则跳过)"""
-    # 1. 检查分类
-    cat_result = await db.execute(select(RiskCategory))
-    existing_cats = {c.code: c for c in cat_result.scalars().all()}
-
-    cat_code_to_id = {}
-    for cat_data in INIT_RISK_CATEGORIES:
-        if cat_data["code"] in existing_cats:
-            cat_code_to_id[cat_data["code"]] = existing_cats[cat_data["code"]].id
-            continue
-        cat = RiskCategory(**cat_data)
-        db.add(cat)
-        await db.flush()
-        cat_code_to_id[cat_data["code"]] = cat.id
-
-    # 2. 检查规则
-    rule_result = await db.execute(select(RiskRule.code))
-    existing_rule_codes = {r[0] for r in rule_result.all()}
+    """初始化23条行业风控规则和14种毒丸条款检测规则 (幂等)"""
+    from app.services.risk_rules_engine import INDUSTRY_RISK_RULES, POISON_PILL_PATTERNS
 
     created_count = 0
     skipped_count = 0
-    for rule_data in INIT_RISK_RULES:
-        if rule_data["code"] in existing_rule_codes:
+
+    # 创建风险分类（如果不存在）
+    categories = {}
+    cat_names = {
+        "procurement": "采购类",
+        "sales": "销售类",
+        "outsourcing": "外协类",
+        "lease": "租赁类",
+        "logistics": "物流类",
+        "all": "通用类",
+    }
+
+    for code, name in cat_names.items():
+        result = await db.execute(
+            select(RiskCategory).where(RiskCategory.code == code)
+        )
+        cat = result.scalar_one_or_none()
+        if not cat:
+            cat = RiskCategory(
+                name=name,
+                code=code,
+                is_active=True,
+                sort_order=list(cat_names.keys()).index(code),
+            )
+            db.add(cat)
+            await db.flush()
+        categories[code] = cat
+
+    # 导入23条行业风控规则
+    for rule in INDUSTRY_RISK_RULES:
+        result = await db.execute(
+            select(RiskRule).where(RiskRule.code == rule["id"])
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
             skipped_count += 1
             continue
-        category_code = rule_data.pop("category")
-        rule = RiskRule(
-            **rule_data,
-            category_id=cat_code_to_id[category_code],
+        cat_code = rule["cat"].split(",")[0] if rule["cat"] != "all" else "all"
+        category = categories.get(cat_code, categories["all"])
+
+        risk_level = "high" if rule["sev"] >= 0.7 else ("medium" if rule["sev"] >= 0.5 else "low")
+
+        new_rule = RiskRule(
+            category_id=category.id,
+            name=rule["name"],
+            code=rule["id"],
+            description=rule["desc"],
+            rule_type="keyword",
+            rule_config='{"check": "custom"}',
+            risk_level=RiskLevel(risk_level),
+            risk_score=int(rule["sev"] * 100),
+            suggestion=rule["sug"],
+            contract_type=rule["cat"] if rule["cat"] != "all" else None,
+            is_active=True,
             created_by=current_user.id,
         )
-        db.add(rule)
+        db.add(new_rule)
+        created_count += 1
+
+    # 导入14种毒丸条款检测规则
+    for pp in POISON_PILL_PATTERNS:
+        result = await db.execute(
+            select(RiskRule).where(RiskRule.code == pp["id"])
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            skipped_count += 1
+            continue
+        category = categories["all"]
+
+        risk_level = "high" if pp["sev"] >= 0.7 else ("medium" if pp["sev"] >= 0.5 else "low")
+
+        new_rule = RiskRule(
+            category_id=category.id,
+            name=pp["name"],
+            code=pp["id"],
+            description=f"毒丸条款检测 - {pp['type']}型",
+            rule_type="regex",
+            rule_config='{"pattern": "' + pp["pat"].replace('"', '\"') + '"}',
+            risk_level=RiskLevel(risk_level),
+            risk_score=int(pp["sev"] * 100),
+            suggestion=f"检测到{pp['type']}型毒丸条款，请审查相关条款",
+            contract_type=None,
+            is_active=True,
+            created_by=current_user.id,
+        )
+        db.add(new_rule)
         created_count += 1
 
     await db.commit()
 
     return {
-        "categories_total": len(INIT_RISK_CATEGORIES),
-        "rules_created": created_count,
-        "rules_skipped": skipped_count,
-        "message": f"初始化完成: 新建 {created_count} 条规则, 跳过 {skipped_count} 条已存在规则",
+        "message": f"成功初始化{created_count}条风险规则",
+        "created_count": created_count,
+        "skipped_count": skipped_count,
+        "industry_rules": len(INDUSTRY_RISK_RULES),
+        "poison_pills": len(POISON_PILL_PATTERNS),
     }
