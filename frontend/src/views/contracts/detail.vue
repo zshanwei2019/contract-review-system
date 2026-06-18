@@ -63,9 +63,16 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="word">📄 导出Word</el-dropdown-item>
-                  <el-dropdown-item command="pdf">📕 导出PDF</el-dropdown-item>
-                  <el-dropdown-item command="markdown">📝 导出Markdown</el-dropdown-item>
+                  <el-dropdown-item disabled>修改版 (含批注)</el-dropdown-item>
+                  <el-dropdown-item command="word-modified">📄 Word - 修改版</el-dropdown-item>
+                  <el-dropdown-item command="pdf-modified">📕 PDF - 修改版</el-dropdown-item>
+                  <el-dropdown-item command="markdown-modified">📝 Markdown - 修改版</el-dropdown-item>
+                  <el-dropdown-item divided disabled>清洁版 (无痕迹)</el-dropdown-item>
+                  <el-dropdown-item command="word-clean">📄 Word - 清洁版</el-dropdown-item>
+                  <el-dropdown-item command="pdf-clean">📕 PDF - 清洁版</el-dropdown-item>
+                  <el-dropdown-item divided disabled>原文版</el-dropdown-item>
+                  <el-dropdown-item command="word-original">📄 Word - 原文版</el-dropdown-item>
+                  <el-dropdown-item command="pdf-original">📕 PDF - 原文版</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -335,13 +342,13 @@
         />
       </div>
       <div style="margin-bottom: 16px; display: flex; gap: 8px;">
-        <el-button type="primary" icon="Download" @click="handleExportModified('word')">
+        <el-button type="primary" icon="Download" @click="handleExportModified('word-modified')">
           导出Word
         </el-button>
-        <el-button type="warning" icon="Download" @click="handleExportModified('pdf')">
+        <el-button type="warning" icon="Download" @click="handleExportModified('pdf-modified')">
           导出PDF
         </el-button>
-        <el-button type="info" icon="Download" @click="handleExportModified('markdown')">
+        <el-button type="info" icon="Download" @click="handleExportModified('markdown-modified')">
           导出Markdown
         </el-button>
       </div>
@@ -421,7 +428,6 @@ import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
 import { risksApi } from '@/api/risks'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
-import { risksApi } from '@/api/risks'
 import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -430,10 +436,24 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const aiReviewing = ref(false)
+const aiResult = ref<any>({})
+const showAiResult = ref(false)
 const contract = ref<any>({})
 const reviews = ref<any[]>([])
 const versions = ref<any[]>([])
 const riskSummary = ref<any>(null)
+const quantifyLoading = ref(false)
+const compareLoading = ref(false)
+const showCompareDialog = ref(false)
+const compareData = ref<any>(null)
+const modificationLoading = ref(false)
+const modifiedContent = ref('')
+const showModifiedContent = ref(false)
+const modificationSuggestions = ref<any[]>([])
+const selectedSuggestions = ref<number[]>([])
+const showModificationDialog = ref(false)
+const applyingModifications = ref(false)
+const diffSummary = ref('')
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -603,16 +623,18 @@ const handleApplyModifications = async () => {
   }
 }
 
-const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
+const handleExportModified = async (cmd: string) => {
+  // cmd 格式: "word-modified" | "pdf-clean" | "markdown-modified" 等
+  const [format, version] = cmd.split('-')
   try {
-    const response: any = await contractsApi.exportModifiedContract(contractId.value, format)
+    const response: any = await contractsApi.exportModifiedContract(contractId.value, format, version)
     
     // 创建下载链接
     const blob = new Blob([response.data])
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `modified_${contractId.value}.${format === 'word' ? 'docx' : format}`
+    link.download = `${version}_${contractId.value}.${format === 'word' ? 'docx' : format}`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -622,21 +644,6 @@ const handleExportModified = async (format: 'word' | 'pdf' | 'markdown') => {
   } catch (err: any) {
     ElMessage.error('导出失败')
   }
-}
-
-const formatMoney = (amount: number) => {
-  if (!amount) return '0'
-  if (amount >= 10000) return (amount / 10000).toFixed(1) + '万'
-  return amount.toLocaleString()
-}
-
-const handleQuantifyAll = async () => {
-  quantifyLoading.value = true
-  try {
-    await risksApi.quantifyAllRisks(contractId.value)
-    riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
-    ElMessage.success('量化评估完成')
-  } catch { ElMessage.error('量化评估失败') } finally { quantifyLoading.value = false }
 }
 
 const handleCompare = async () => {

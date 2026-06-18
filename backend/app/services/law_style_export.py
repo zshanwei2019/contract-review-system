@@ -619,7 +619,7 @@ def _wrap_run_with_comment(paragraph, run, comment_id: int):
 
 
 def _add_modified_paragraph(doc, text, level, comment_id=None, comments_part=None, lawyer='经办律师', risk_label='', reason='', suggestion=''):
-    """添加段落 + 可选批注框"""
+    """添加段落 + 可选批注框 + 建议文字颜色标注"""
     p = _add_para(doc, text, level=level)
     if comment_id is not None and comments_part is not None:
         # 拼批注内容
@@ -629,11 +629,22 @@ def _add_modified_paragraph(doc, text, level, comment_id=None, comments_part=Non
             comment_text += f"建议: {suggestion[:200]}\n"
         comment_text += "— " + lawyer
         _add_comment(doc, comments_part, comment_id, lawyer, lawyer[:1], comment_text)
-        # 给段落里所有 run 加批注包裹
+        # 给段落里第一个 run 加批注包裹
         for run in p.runs:
             if run.text and run.text.strip():
                 _wrap_run_with_comment(p, run, comment_id)
-                break  # 只包裹第一个 run
+                break
+        # 在段落后添加绿色建议文字
+        if suggestion:
+            from docx.shared import RGBColor, Pt
+            p2 = doc.add_paragraph()
+            p2.paragraph_format.first_line_indent = None
+            p2.paragraph_format.space_before = Pt(2)
+            p2.paragraph_format.space_after = Pt(6)
+            run_label = p2.add_run("【修改建议】")
+            _set_run_font(run_label, '宋体', 10, bold=True, color=RGBColor(0x00, 0x80, 0x00))
+            run_sug = p2.add_run(suggestion[:300])
+            _set_run_font(run_sug, '宋体', 10, color=RGBColor(0x00, 0x80, 0x00))
 
 
 # ============== 修改版主函数 ==============

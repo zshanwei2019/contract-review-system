@@ -186,7 +186,7 @@ async def create_contract(
             file_path=file_path,
             file_size=file_size,
             file_type=file_type,
-            uploader_id=current_user.id,
+            uploaded_by=current_user.id,
         )
         db.add(contract_file)
         await db.commit()
@@ -710,32 +710,27 @@ async def apply_modifications(
 async def export_modified_contract(
     contract_id: int,
     format: str = Query("word", regex="^(word|pdf|markdown)$"),
+    version: str = Query("modified", regex="^(modified|clean|original)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """导出修改后的合同"""
+    """导出合同 - 修改版(含批注+对照表) / 清洁版 / 原文版"""
     from app.services.contract_modifier import contract_modifier
+    from app.services.law_style_export import (
+        generate_modified_docx, generate_clean_docx, generate_original_docx,
+        generate_modified_pdf, generate_clean_pdf, generate_original_pdf,
+    )
     from fastapi.responses import StreamingResponse
-    import io
+    import io, re, datetime
     
-    # 获取合同
     contract = await db.get(Contract, contract_id)
     if not contract:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="合同不存在",
-        )
+        raise HTTPException(status_code=404, detail="合同不存在")
     
-    # 获取最新版本的修改后内容
-    result = await db.execute(
-        select(ContractVersion)
-        .where(ContractVersion.contract_id == contract_id)
-        .order_by(ContractVersion.version_no.desc())
-        .limit(1)
-    )
-    latest_version = result.scalar_one_or_none()
+    contract_title = contract.title or f"合同{contract_id}"
+    contract_no = contract.contract_no or ""
     
-    # 获取审查发现来生成修改后内容
+    # 获取审查意见
     review_result = await db.execute(
         select(ReviewTask)
         .where(ReviewTask.contract_id == contract_id)
@@ -744,16 +739,14 @@ async def export_modified_contract(
     )
     review_task = review_result.scalar_one_or_none()
     
-    # 生成合同内容
+    suggestions = []
+    sug_objs = []
     if review_task:
-        # 获取审查发现
         findings_result = await db.execute(
             select(ReviewOpinion)
             .where(ReviewOpinion.review_task_id == review_task.id)
         )
         findings = findings_result.scalars().all()
-        
-        # 生成修改建议
         findings_list = [{
             "id": f.id,
             "clause": f.clause_reference or "",
@@ -762,115 +755,84 @@ async def export_modified_contract(
             "category": f.opinion_type or "",
             "suggestion": f.suggestion or ""
         } for f in findings]
-        suggestions = contract_modifier._generate_with_rules(contract, findings_list)
-        
-        # 生成修改后合同内容
-        modified_content = await contract_modifier.rewrite_contract_with_ai(
-            contract, suggestions
-        )
+        sug_objs = contract_modifier._generate_with_rules(contract, findings_list)
+        # 转成 dict 供 law_style_export 使用
+        suggestions = [
+            {
+                "clause": s.clause,
+                "original_text": s.original_text,
+                "suggested_text": s.suggested_text,
+                "reason": s.reason,
+                "legal_basis": s.legal_basis,
+                "risk_level": s.priority.value if hasattr(s.priority, 'value') else str(s.priority),
+                "content": s.reason,
+                "suggestion": s.suggested_text,
+            }
+            for s in sug_objs
+        ]
+    
+    # 获取合同内容: 优先用文件缓存, 否则现场生成
+    import os, hashlib
+    cache_dir = f"/tmp/contract_export_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_key = hashlib.md5(f"{contract_id}_{review_task.id if review_task else 0}_{len(suggestions)}".encode()).hexdigest()
+    cache_file = f"{cache_dir}/{cache_key}.md"
+    
+    if os.path.exists(cache_file):
+        with open(cache_file, "r") as f:
+            modified_content = f.read()
+    elif review_task and sug_objs:
+        modified_content = await contract_modifier.rewrite_contract_with_ai(contract, sug_objs)
+        with open(cache_file, "w") as f:
+            f.write(modified_content)
     else:
-        # 没有审查记录，生成基础合同
         modified_content = contract_modifier._rewrite_with_rules(contract, [])
     
+    risk_level = review_task.risk_level if review_task else ""
+    
+    # 专业文件名: 合同名_版本_日期.format
+    date_str = datetime.date.today().strftime("%Y%m%d")
+    safe_title = re.sub(r'[\\/:*?"<>|]', '_', contract_title)[:30]
+    version_label = {"modified": "修改版", "clean": "清洁版", "original": "原文版"}[version]
+    ext = {"word": "docx", "pdf": "pdf", "markdown": "md"}[format]
+    filename = f"{safe_title}_{version_label}_{date_str}.{ext}"
+    
+    # URL 编码文件名 (RFC 5987)
+    from urllib.parse import quote
+    filename_encoded = quote(filename)
+    
+    # 生成文件
     if format == "markdown":
         return StreamingResponse(
             io.BytesIO(modified_content.encode("utf-8")),
             media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.md"}
+            headers={"Content-Disposition": f"attachment; filename=contract_{contract_id}.{ext}; filename*=UTF-8''{filename_encoded}"}
         )
-    elif format == "word":
-        # 生成Word文档
-        from docx import Document
-        from docx.shared import Pt
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        
-        doc = Document()
-        style = doc.styles["Normal"]
-        style.font.name = "宋体"
-        style.font.size = Pt(11)
-        
-        # 解析Markdown并添加到Word
-        for line in modified_content.split("\n"):
-            if line.startswith("# "):
-                heading = doc.add_heading(line[2:], level=0)
-                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            elif line.startswith("## "):
-                doc.add_heading(line[3:], level=1)
-            elif line.startswith("### "):
-                doc.add_heading(line[4:], level=2)
-            elif line.startswith("> "):
-                p = doc.add_paragraph()
-                run = p.add_run(line[2:])
-                run.italic = True
-            elif line.strip():
-                doc.add_paragraph(line)
-        
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        
+    
+    if format == "word":
+        if version == "modified":
+            file_bytes = generate_modified_docx(modified_content, suggestions, contract_title, contract_no, risk_level=risk_level)
+        elif version == "clean":
+            file_bytes = generate_clean_docx(modified_content, contract_title, contract_no, risk_level=risk_level)
+        else:
+            file_bytes = generate_original_docx(modified_content, contract_title, contract_no)
         return StreamingResponse(
-            buffer,
+            io.BytesIO(file_bytes),
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.docx"}
+            headers={"Content-Disposition": f"attachment; filename=contract_{contract_id}.{ext}; filename*=UTF-8''{filename_encoded}"}
         )
-    else:  # pdf
-        # 生成PDF文档
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-        from reportlab.lib.units import cm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm)
-        
-        # 注册中文字体
-        font_paths = [
-            "/System/Library/Fonts/STHeiti Medium.ttc",
-            "/System/Library/Fonts/STHeiti Light.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # Linux
-            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",  # Linux
-        ]
-        
-        font_name = "Helvetica"
-        for fp in font_paths:
-            try:
-                pdfmetrics.registerFont(TTFont("ChineseFont", fp))
-                font_name = "ChineseFont"
-                break
-            except Exception:
-                continue
-        
-        styles = getSampleStyleSheet()
-        normal_style = ParagraphStyle("Chinese", parent=styles["Normal"], fontName=font_name, fontSize=10, leading=14)
-        heading_style = ParagraphStyle("ChineseHeading", parent=styles["Heading1"], fontName=font_name, fontSize=14, leading=18)
-        
-        elements = []
-        for line in modified_content.split("\n"):
-            if line.startswith("# "):
-                elements.append(Paragraph(line[2:], heading_style))
-            elif line.startswith("## "):
-                elements.append(Paragraph(line[3:], heading_style))
-            elif line.startswith("### "):
-                elements.append(Paragraph(line[4:], heading_style))
-            elif line.strip():
-                # 处理Markdown格式
-                import re
-                line = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', line)
-                line = re.sub(r'\*(.+?)\*', r'<i>\1</i>', line)
-                line = re.sub(r'\[已修改\]', '<font color="green"><b>[已修改]</b></font>', line)
-                elements.append(Paragraph(line, normal_style))
-            elements.append(Spacer(1, 0.2*cm))
-        
-        doc.build(elements)
-        buffer.seek(0)
-        
+    
+    if format == "pdf":
+        if version == "modified":
+            file_bytes = generate_modified_pdf(modified_content, suggestions, contract_title, contract_no)
+        elif version == "clean":
+            file_bytes = generate_clean_pdf(modified_content, contract_title, contract_no)
+        else:
+            file_bytes = generate_original_pdf(modified_content, contract_title, contract_no)
         return StreamingResponse(
-            buffer,
+            io.BytesIO(file_bytes),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=modified_{contract_id}.pdf"}
+            headers={"Content-Disposition": f"attachment; filename=contract_{contract_id}.{ext}; filename*=UTF-8''{filename_encoded}"}
         )
 
 

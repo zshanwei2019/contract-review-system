@@ -65,9 +65,9 @@ export const contractsApi = {
   },
 
   // 导出修改后的合同
-  exportModifiedContract(contractId: number, format: 'word' | 'pdf' | 'markdown' = 'word') {
+  exportModifiedContract(contractId: number, format: 'word' | 'pdf' | 'markdown' = 'word', version: 'modified' | 'clean' | 'original' = 'modified') {
     return request.get(`/contracts/${contractId}/export-modified`, {
-      params: { format },
+      params: { format, version },
       responseType: 'blob'
     })
   },

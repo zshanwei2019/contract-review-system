@@ -276,7 +276,7 @@ onMounted(() => { refreshAlerts(); loadAgents(); loadKnowledge(); loadStats(); l
 .agent-info h4 { margin: 0 0 4px; font-size: 16px; }
 .agent-info p { margin: 0; color: #666; font-size: 13px; }
 .knowledge-content { white-space: pre-wrap; font-family: inherit; font-size: 14px; line-height: 1.6; color: #333; margin: 0; }
-.rag-result-item { padding: 12px; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 8px;
+.rag-result-item { padding: 12px; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 8px; }
 .rag-result-header { margin-bottom: 6px; }
 .rag-result-text { font-size: 13px; color: #333; margin: 4px 0; }
 .rag-result-suggestion { font-size: 13px; color: #67c23a; margin: 4px 0; }
