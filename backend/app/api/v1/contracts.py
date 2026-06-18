@@ -771,24 +771,52 @@ async def export_modified_contract(
             for s in sug_objs
         ]
     
-    # 获取合同内容: 优先用文件缓存, 否则现场生成
+    # 获取合同内容
     import os, hashlib
     cache_dir = f"/tmp/contract_export_cache"
     os.makedirs(cache_dir, exist_ok=True)
     cache_key = hashlib.md5(f"{contract_id}_{review_task.id if review_task else 0}_{len(suggestions)}".encode()).hexdigest()
     cache_file = f"{cache_dir}/{cache_key}.md"
     
+    # AI 改写后的内容 (含开场白, 需清洗)
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
-            modified_content = f.read()
+            ai_content = f.read()
     elif review_task and sug_objs:
-        modified_content = await contract_modifier.rewrite_contract_with_ai(contract, sug_objs)
+        ai_content = await contract_modifier.rewrite_contract_with_ai(contract, sug_objs)
         with open(cache_file, "w") as f:
-            f.write(modified_content)
+            f.write(ai_content)
     else:
-        modified_content = contract_modifier._rewrite_with_rules(contract, [])
+        ai_content = contract_modifier._rewrite_with_rules(contract, [])
+    
+    # 清洗 AI 输出: 去掉开场白, 只保留 *** 后的正文
+    def _clean_ai_output(text: str) -> str:
+        if '***' in text:
+            text = text.split('***', 1)[1].strip()
+        # 也去掉可能残留的结尾废话
+        text = re.sub(r'^(好的，|我将根据|根据您提供|为您生成).*?\n', '', text)
+        return text.strip()
+    
+    modified_content = _clean_ai_output(ai_content)
+    
+    # 原始合同内容: 从文件解析
+    original_content = None
+    if contract.file_path and os.path.exists(contract.file_path):
+        try:
+            from app.services.file_parser import extract_text_from_file
+            original_content = await extract_text_from_file(contract.file_path)
+        except Exception:
+            pass
+    if not original_content:
+        original_content = modified_content  # fallback
     
     risk_level = review_task.risk_level if review_task else ""
+    
+    # 根据 version 选择内容
+    if version == "original":
+        export_content = original_content
+    else:
+        export_content = modified_content
     
     # 专业文件名: 合同名_版本_日期.format
     date_str = datetime.date.today().strftime("%Y%m%d")
@@ -804,18 +832,18 @@ async def export_modified_contract(
     # 生成文件
     if format == "markdown":
         return StreamingResponse(
-            io.BytesIO(modified_content.encode("utf-8")),
+            io.BytesIO(export_content.encode("utf-8")),
             media_type="text/markdown",
             headers={"Content-Disposition": f"attachment; filename=contract_{contract_id}.{ext}; filename*=UTF-8''{filename_encoded}"}
         )
     
     if format == "word":
         if version == "modified":
-            file_bytes = generate_modified_docx(modified_content, suggestions, contract_title, contract_no, risk_level=risk_level)
+            file_bytes = generate_modified_docx(export_content, suggestions, contract_title, contract_no, risk_level=risk_level)
         elif version == "clean":
-            file_bytes = generate_clean_docx(modified_content, contract_title, contract_no, risk_level=risk_level)
+            file_bytes = generate_clean_docx(export_content, contract_title, contract_no, risk_level=risk_level)
         else:
-            file_bytes = generate_original_docx(modified_content, contract_title, contract_no)
+            file_bytes = generate_original_docx(export_content, contract_title, contract_no)
         return StreamingResponse(
             io.BytesIO(file_bytes),
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -824,11 +852,11 @@ async def export_modified_contract(
     
     if format == "pdf":
         if version == "modified":
-            file_bytes = generate_modified_pdf(modified_content, suggestions, contract_title, contract_no)
+            file_bytes = generate_modified_pdf(export_content, suggestions, contract_title, contract_no)
         elif version == "clean":
-            file_bytes = generate_clean_pdf(modified_content, contract_title, contract_no)
+            file_bytes = generate_clean_pdf(export_content, contract_title, contract_no)
         else:
-            file_bytes = generate_original_pdf(modified_content, contract_title, contract_no)
+            file_bytes = generate_original_pdf(export_content, contract_title, contract_no)
         return StreamingResponse(
             io.BytesIO(file_bytes),
             media_type="application/pdf",

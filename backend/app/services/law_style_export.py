@@ -618,9 +618,15 @@ def _wrap_run_with_comment(paragraph, run, comment_id: int):
     parent.insert(idx + 3, crr_run)
 
 
-def _add_modified_paragraph(doc, text, level, comment_id=None, comments_part=None, lawyer='经办律师', risk_label='', reason='', suggestion=''):
+def _add_modified_paragraph(doc, text, level, comment_id=None, comments_part=None, lawyer='经办律师', risk_label='', reason='', suggestion='', is_modified_clause=False):
     """添加段落 + 可选批注框 + 建议文字颜色标注"""
     p = _add_para(doc, text, level=level)
+    # 修改的条款用蓝色标记
+    if is_modified_clause:
+        from docx.shared import RGBColor
+        for run in p.runs:
+            if run.text and run.text.strip():
+                run.font.color.rgb = RGBColor(0x00, 0x66, 0xCC)
     if comment_id is not None and comments_part is not None:
         # 拼批注内容
         comment_text = f"风险等级: {_risk_label(risk_label)}\n"
@@ -690,6 +696,9 @@ def generate_modified_docx(
         s = re.sub(r'^#+\s*', '', s)
         s_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s_clean = re.sub(r'`([^`]+)`', r'\1', s_clean)
+        # 检测 [已修改] 标记
+        is_modified_clause = '[已修改]' in s_clean
+        s_clean = s_clean.replace(' [已修改]', '').replace('[已修改]', '').strip()
         level, cleaned = _detect_clause_level(s_clean)
         
         # 找匹配的意见
@@ -722,8 +731,16 @@ def generate_modified_docx(
                 lawyer=lawyer,
                 risk_label=sug.get("risk_level", "medium"),
                 reason=sug.get("reason") or sug.get("content", ""),
-                suggestion=sug.get("suggested_text") or sug.get("suggestion", "")
+                suggestion=sug.get("suggested_text") or sug.get("suggestion", ""),
+                is_modified_clause=is_modified_clause
             )
+        elif is_modified_clause:
+            # 有 [已修改] 标记但没匹配到意见 → 蓝色渲染
+            from docx.shared import RGBColor
+            p = _add_para(doc, cleaned, level=level)
+            for run in p.runs:
+                if run.text and run.text.strip():
+                    run.font.color.rgb = RGBColor(0x00, 0x66, 0xCC)
         else:
             _add_para(doc, cleaned, level=level)
     
@@ -925,20 +942,43 @@ def generate_pdf_from_docx_args(
         s = re.sub(r'^#+\s*', '', s)
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
+        # 检测 [已修改] 标记
+        is_mod = '[已修改]' in s
+        s = s.replace(' [已修改]', '').replace('[已修改]', '').strip()
         level, cleaned = _detect_clause_level(s)
+        # 修改条款用蓝色
+        mod_color = '#0066CC' if is_mod else None
         try:
             if level == 0:
-                story.append(Paragraph(cleaned, styles['title']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['title']))
+                else:
+                    story.append(Paragraph(cleaned, styles['title']))
             elif level == 1:
-                story.append(Paragraph(cleaned, styles['h1']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h1']))
+                else:
+                    story.append(Paragraph(cleaned, styles['h1']))
             elif level == 2:
-                story.append(Paragraph(cleaned, styles['h2']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h2']))
+                else:
+                    story.append(Paragraph(cleaned, styles['h2']))
             elif level == 3:
-                story.append(Paragraph(cleaned, styles['h3']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h3']))
+                else:
+                    story.append(Paragraph(cleaned, styles['h3']))
             elif level == 4 or level == 5:
-                story.append(Paragraph(cleaned, styles['body_no_indent']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['body_no_indent']))
+                else:
+                    story.append(Paragraph(cleaned, styles['body_no_indent']))
             else:
-                story.append(Paragraph(cleaned, styles['body']))
+                if mod_color:
+                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['body']))
+                else:
+                    story.append(Paragraph(cleaned, styles['body']))
         except Exception:
             cleaned_safe = cleaned.replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(cleaned_safe, styles['body']))
