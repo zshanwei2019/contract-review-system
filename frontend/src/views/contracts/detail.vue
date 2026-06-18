@@ -629,12 +629,30 @@ const handleExportModified = async (cmd: string) => {
   try {
     const response: any = await contractsApi.exportModifiedContract(contractId.value, format, version)
     
+    // 从 Content-Disposition header 解析文件名
+    const cd = response.headers?.['content-disposition'] || ''
+    let filename = ''
+    // 优先 filename*=UTF-8''xxx
+    const starMatch = cd.match(/filename\*=UTF-8''(.+?)(?:;|$)/)
+    if (starMatch) {
+      filename = decodeURIComponent(starMatch[1])
+    } else {
+      const plainMatch = cd.match(/filename="?(.+?)"?(?:;|$)/)
+      if (plainMatch) filename = plainMatch[1]
+    }
+    // fallback
+    if (!filename) {
+      const ext = format === 'word' ? 'docx' : format === 'pdf' ? 'pdf' : 'md'
+      const vLabel = { modified: '修改版', clean: '清洁版', original: '原文版' }[version] || version
+      filename = `${contract.value?.title || '合同'}_${vLabel}.${ext}`
+    }
+    
     // 创建下载链接
     const blob = new Blob([response.data])
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${version}_${contractId.value}.${format === 'word' ? 'docx' : format}`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -642,6 +660,7 @@ const handleExportModified = async (cmd: string) => {
     
     ElMessage.success('导出成功')
   } catch (err: any) {
+    console.error('导出失败:', err)
     ElMessage.error('导出失败')
   }
 }

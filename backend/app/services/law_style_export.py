@@ -826,6 +826,13 @@ def _register_cjk():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     candidates = [
+        # macOS
+        ('CJK', '/System/Library/Fonts/STHeiti Light.ttc', 0),
+        ('CJK', '/System/Library/Fonts/PingFang.ttc', 0),
+        ('CJK', '/Library/Fonts/Songti.ttc', 0),
+        ('CJK', '/System/Library/Fonts/Supplemental/Songti.ttc', 0),
+        ('CJK', '/System/Library/Fonts/Supplemental/STSong.ttf', 0),
+        # Linux
         ('CJK', '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', 0),
         ('CJK', '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', 0),
         ('CJK', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 0),
@@ -838,7 +845,7 @@ def _register_cjk():
                 return name
             except Exception:
                 continue
-    # 退化: STHeiti / Helvetica
+    # 退化: Helvetica
     return 'Helvetica'
 
 
