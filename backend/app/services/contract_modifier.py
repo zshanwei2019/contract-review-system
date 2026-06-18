@@ -14,6 +14,11 @@ from app.models.contract import Contract, ContractVersion
 from app.models.review import ReviewTask, ReviewOpinion
 from app.core.config import settings
 
+# RAG 注入 (条款级 RAG 检索)
+from app.services.contract_rag import ContractRAG, _format_rag_blocks
+import logging as _logging
+_rag_logger = _logging.getLogger("contract_rag")
+
 
 class ModificationType(str, Enum):
     """修改类型"""
@@ -135,7 +140,21 @@ class ContractModifier:
         """使用AI生成修改建议"""
         import httpx
         
-        prompt = self._build_modification_prompt(contract, findings)
+        # RAG 检索 (对每个 finding 检索 top-2 类似条款)
+        rag_blocks = []
+        try:
+            rag = ContractRAG()
+            for f in findings:
+                clause_text = f.get("content", "") or f.get("clause", "") or ""
+                if clause_text:
+                    ctx = rag.retrieve(clause_text, top_k=2)
+                    if not ctx.is_empty():
+                        rag_blocks.append(ctx)
+            _rag_logger.info(f"RAG 注入: {len(rag_blocks)} 个检索块")
+        except Exception as e:
+            _rag_logger.warning(f"RAG 检索失败, 继续: {e}")
+        
+        prompt = self._build_modification_prompt(contract, findings, rag_blocks)
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:  # 30秒超时
@@ -218,8 +237,9 @@ class ContractModifier:
             print(f"AI API调用失败: {str(e)}")
             return self._generate_with_rules(contract, findings)
     
-    def _build_modification_prompt(self, contract: Contract, findings: List[Dict]) -> str:
-        """构建修改建议提示词"""
+    def _build_modification_prompt(self, contract: Contract, findings: List[Dict], rag_blocks: list = None) -> str:
+        """构建修改建议提示词 (含 RAG 检索块)"""
+        rag_section = _format_rag_blocks(rag_blocks or [])
         return f"""请根据以下审查发现，为合同生成修改建议。
 
 合同信息：
@@ -231,7 +251,7 @@ class ContractModifier:
 
 审查发现的问题：
 {json.dumps(findings, ensure_ascii=False, indent=2)}
-
+{rag_section}
 请为每个问题生成具体的修改建议，返回JSON格式：
 [
   {{
