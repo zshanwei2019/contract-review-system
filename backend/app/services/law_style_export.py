@@ -676,22 +676,7 @@ def generate_modified_docx(
     # 初始化批注 part
     comments_part = _add_comments_part(doc)
     
-    # 1) 封面
-    _add_cover_page(doc, contract_title, contract_no, lawyer, date_str, risk_level)
-    
-    # 2) 目录
-    sections = []
-    for line in content.split('\n'):
-        s = line.strip()
-        s = re.sub(r'^#+\s*', '', s)
-        if not s:
-            continue
-        level, _ = _detect_clause_level(s)
-        if level in (1, 2, 3):
-            sections.append(s[:30])
-    _add_toc_page(doc, sections[:30] if sections else ["合同主体", "主要条款", "签字盖章"])
-    
-    # 3) 正文 - 智能插入批注
+    # 正文 - 智能插入批注
     # 匹配意见到原文位置
     matched_indices = set()
     lines = content.split('\n')
@@ -806,20 +791,6 @@ def generate_clean_docx(
     doc = Document()
     _setup_docx_default_style(doc)
     _setup_header_footer(doc, contract_title, contract_no)
-    
-    # 封面
-    _add_cover_page(doc, contract_title, contract_no, lawyer, date_str, risk_level)
-    
-    # 目录
-    sections = []
-    for line in content.split('\n'):
-        s = line.strip()
-        s = re.sub(r'^#+\s*', '', s)
-        if not s: continue
-        level, _ = _detect_clause_level(s)
-        if level in (1, 2, 3):
-            sections.append(s[:30])
-    _add_toc_page(doc, sections[:30] if sections else ["合同主体", "主要条款", "签字盖章"])
     
     # 正文 - 无痕迹
     _render_body(doc, content)
@@ -938,85 +909,6 @@ def generate_pdf_from_docx_args(
     )
     
     story = []
-    # 封面
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER
-    story.append(Spacer(1, 2 * cm))
-    # 封面 (通用商务版式)
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER
-    from reportlab.lib.units import cm
-    story.append(Spacer(1, 3 * cm))
-    # 顶部品牌色横线
-    canvas_proxy = []  # 我们用 paragraph 装饰线代替
-    story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph("合同审查报告", ParagraphStyle('CoverTitle', fontName=cjk, fontSize=36, leading=54, alignment=TA_CENTER, textColor=colors.HexColor('#1F3864'))))
-    story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph("— 关于 —", ParagraphStyle('CoverAbout', fontName=cjk, fontSize=12, leading=18, alignment=TA_CENTER)))
-    story.append(Paragraph(f"《{contract_title}》", ParagraphStyle('CoverContract', fontName=cjk, fontSize=22, leading=33, alignment=TA_CENTER)))
-    story.append(Spacer(1, 3 * cm))
-    # 元信息表
-    from reportlab.platypus import Table as RLTable, TableStyle
-    meta = [
-        ["文件编号", contract_no],
-        ["出具日期", DEFAULT_DATE],
-        ["审查人员", DEFAULT_LAWYER],
-    ]
-    meta_table = RLTable(meta, colWidths=[4 * cm, 8 * cm])
-    meta_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), cjk),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F2F2F2')),
-        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1F3864')),
-        ('FONTWEIGHT', (0, 0), (0, -1), 'BOLD'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BFBFBF')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    # 居中
-    meta_table.hAlign = 'CENTER'
-    story.append(meta_table)
-    story.append(Spacer(1, 6 * cm))
-    story.append(Paragraph("Contract Review Report", ParagraphStyle('CoverFoot', fontName='Helvetica-Oblique', fontSize=10, leading=15, alignment=TA_CENTER, textColor=colors.grey)))
-    story.append(PageBreak())
-    
-    # 目录 - 引导线 + 估计页码
-    story.append(Paragraph("目  录", styles['title']))
-    story.append(Spacer(1, 1 * cm))
-    # 用 reportlab 的 tab leader 做引导线 (right-aligned, dot leader)
-    # TabStop 不需要单独 import, 用 Paragraph + tab 实现
-    toc_style_right = ParagraphStyle('Toc', fontName=cjk, fontSize=12, leading=22,
-                                      spaceAfter=4, leftIndent=0)
-    toc_entries = [
-        ("一、合同主体与标的", "3"),
-        ("二、价款与支付方式", "5"),
-        ("三、履行期限与方式", "7"),
-        ("四、双方权利义务", "9"),
-        ("五、违约责任", "11"),
-        ("六、争议解决", "13"),
-    ]
-    if is_modified and suggestions:
-        toc_entries.append(("七、修改建议与法律依据", "15"))
-    # 每条用 Paragraph with custom tab
-    for entry, page in toc_entries:
-        # 文本 + tab + 点引导线 + tab + 页码
-        # 用 	 触发 tab stop, WD_TAB_LEADER.DOTS 等价于 reportlab tab leader
-        from reportlab.platypus import Paragraph as P
-        from reportlab.lib.styles import ParagraphStyle
-        from reportlab.lib.enums import TA_LEFT
-        toc_p = Paragraph(f"{entry}<font color='#808080'>  ............  </font>{page}",
-                          ParagraphStyle('TocEntry', fontName=cjk, fontSize=12, leading=22,
-                                          spaceAfter=6, alignment=TA_LEFT))
-        story.append(toc_p)
-    story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph("注: 页码为章节起始位置, 实际页码以最终文档为准",
-                            ParagraphStyle('TocNote', fontName=cjk, fontSize=9, leading=12,
-                                            alignment=TA_CENTER, textColor=colors.grey)))
-    story.append(PageBreak())
-    
     # 正文
     for line in content.split('\n'):
         s = line.strip()
@@ -1041,93 +933,43 @@ def generate_pdf_from_docx_args(
             else:
                 story.append(Paragraph(cleaned, styles['body']))
         except Exception:
-            # 中文渲染 fallback
             cleaned_safe = cleaned.replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(cleaned_safe, styles['body']))
-    
+
     # 修改版: 末尾加修改建议
     if is_modified and suggestions:
         story.append(PageBreak())
-        story.append(Paragraph("修 改 建 议 明 细", styles['title']))
-        story.append(Spacer(1, 1 * cm))
-        # 修改建议明细表 (5 列, 风险等级带颜色)
-        from reportlab.platypus import Table as RLTable, TableStyle
-        sug_data = [["序号", "风险等级", "条款", "问题与建议", "法律依据"]]
-        for i, sug in enumerate(suggestions, 1):
-            risk = sug.get('risk_level', 'medium')
-            risk_text = _risk_label(risk)
-            risk_color_hex = {                'high': '#C00000',                 'medium': '#C88000',                 'low': '#008000'            }.get(risk, '#000000')
-            # 用 Paragraph 加颜色
-            risk_para = Paragraph(f"<b><font color='{risk_color_hex}'>{risk_text}</font></b>",
-                                  ParagraphStyle('RiskCell', fontName=cjk, fontSize=10, leading=14, alignment=1))
-            sug_data.append([
-                str(i),
-                risk_para,
-                Paragraph((sug.get('clause', '') or '—')[:30], ParagraphStyle('ClauseCell', fontName=cjk, fontSize=9, leading=12)),
-                Paragraph(
-                    f"<b>问题:</b> {(sug.get('content') or sug.get('reason', '') or '—')[:120]}<br/>"
-                    f"<b>建议:</b> {(sug.get('suggested_text') or sug.get('suggestion', '') or '—')[:120]}",
-                    ParagraphStyle('CellText', fontName=cjk, fontSize=9, leading=12)
-                ),
-                Paragraph((sug.get('legal_basis', '') or '—')[:50],
-                          ParagraphStyle('LawCell', fontName=cjk, fontSize=9, leading=12)),
-            ])
-        sug_table = RLTable(sug_data, colWidths=[1.2 * cm, 2.0 * cm, 3.0 * cm, 7.5 * cm, 3.3 * cm])
-        sug_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, 0), cjk),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1F3864')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTWEIGHT', (0, 0), (-1, 0), 'BOLD'),
-            ('FONTNAME', (0, 1), (-1, -1), cjk),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BFBFBF')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F8F8')]),
-        ]))
-        sug_table.hAlign = 'CENTER'
-        story.append(sug_table)
+        story.append(Paragraph("修改建议汇总", styles['title']))
         story.append(Spacer(1, 0.5 * cm))
-    
-    # 签字盖章
-    story.append(PageBreak())
-    story.append(Paragraph("签 字 盖 章", styles['title']))
-    story.append(Spacer(1, 1 * cm))
-    sig_data = [
-        ["甲  方:", "", "乙  方:", ""],
-        ["单位名称:", "", "单位名称:", ""],
-        ["法定代表人:", "", "法定代表人:", ""],
-        ["委托代理人:", "", "委托代理人:", ""],
-        ["日  期:    年   月   日", "", "日  期:    年   月   日", ""],
-    ]
-    sig_table = Table(sig_data, colWidths=[3 * cm, 4 * cm, 3 * cm, 4 * cm])
-    sig_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('FONTNAME', (0, 0), (-1, -1), cjk),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-    ]))
-    story.append(sig_table)
-    
+        for i, sug in enumerate(suggestions, 1):
+            clause = sug.get('clause', '一般条款')
+            reason = sug.get('reason') or sug.get('content', '')
+            suggestion = sug.get('suggested_text') or sug.get('suggestion', '')
+            risk = sug.get('risk_level', 'medium')
+            risk_color = {'high': '#FF0000', 'medium': '#FF8C00', 'low': '#228B22'}.get(risk, '#FF8C00')
+            story.append(Paragraph(f"{i}. 【{clause}】", styles['h2']))
+            story.append(Paragraph(f'<font color="{risk_color}">风险等级: {risk}</font>', styles['body']))
+            story.append(Paragraph(f"问题: {reason[:200]}", styles['body']))
+            if suggestion:
+                story.append(Paragraph(f'<font color="#006600"><b>建议:</b> {suggestion[:200]}</font>', styles['body']))
+            story.append(Spacer(1, 0.3 * cm))
+
     pdf.build(story, onFirstPage=lambda c, d: _draw_page_decoration(c, d, contract_no, contract_title, cjk),
               onLaterPages=lambda c, d: _draw_page_decoration(c, d, contract_no, contract_title, cjk))
+    buf.seek(0)
     return buf.getvalue()
 
 
 def generate_clean_pdf(content: str, contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:
+    """生成清洁版 PDF - 无痕迹"""
     return generate_pdf_from_docx_args(content, contract_title, contract_no, is_modified=False)
 
 
 def generate_original_pdf(content: str, contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:
+    """生成原始版 PDF"""
     return generate_pdf_from_docx_args(content, contract_title, contract_no, is_modified=False)
 
 
 def generate_modified_pdf(content: str, suggestions: List[Dict], contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:
+    """生成修改版 PDF - 含修改建议"""
     return generate_pdf_from_docx_args(content, contract_title, contract_no, suggestions=suggestions, is_modified=True)
