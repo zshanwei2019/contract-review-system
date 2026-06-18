@@ -130,7 +130,7 @@ def _add_blank(doc, count=1, size=12):
 
 
 def _add_para(doc, text, level=9, bold=False, align='left', first_line_indent=True, space_before=0, color=None):
-    from docx.shared import Cm, Pt
+    from docx.shared import Cm, Pt, RGBColor
     p = doc.add_paragraph()
     if align == 'center':
         p.alignment = 1
@@ -145,22 +145,64 @@ def _add_para(doc, text, level=9, bold=False, align='left', first_line_indent=Tr
         pf.space_before = Pt(space_before)
     pf.line_spacing = 1.5
     pf.line_spacing_rule = 3
+    
+    # 确定字体和大小
     if level == 0:
-        run = p.add_run(text); _set_run_font(run, '黑体', 22, True, color)
+        fname, fsize, fbold = '黑体', 22, True
     elif level == 1:
-        run = p.add_run(text); _set_run_font(run, '黑体', 16, True, color)
+        fname, fsize, fbold = '黑体', 16, True
         pf.space_before = Pt(12); pf.first_line_indent = Cm(0)
     elif level == 2:
-        run = p.add_run(text); _set_run_font(run, '黑体', 14, True, color)
+        fname, fsize, fbold = '黑体', 14, True
         pf.space_before = Pt(6); pf.first_line_indent = Cm(0)
     elif level == 3:
-        run = p.add_run(text); _set_run_font(run, '黑体', 12, True, color)
+        fname, fsize, fbold = '黑体', 12, True
     elif level == 4:
-        run = p.add_run(text); _set_run_font(run, '宋体', 12, True, color)
+        fname, fsize, fbold = '宋体', 12, True
     elif level == 5:
-        run = p.add_run(text); _set_run_font(run, '宋体', 12, False, color)
+        fname, fsize, fbold = '宋体', 12, False
     else:
-        run = p.add_run(text); _set_run_font(run, '宋体', 12, bold, color)
+        fname, fsize, fbold = '宋体', 12, bold
+    
+    # 解析 **加粗** 和 ~~删除线~~ 标记
+    # 加粗 → 蓝色, 删除线 → 红色+删除线
+    segments = []
+    remaining = text
+    while remaining:
+        # 先找 **加粗**
+        bold_match = re.search(r'\*\*(.+?)\*\*', remaining)
+        # 再找 ~~删除线~~
+        del_match = re.search(r'~~(.+?)~~', remaining)
+        
+        # 取最先出现的
+        bold_pos = bold_match.start() if bold_match else float('inf')
+        del_pos = del_match.start() if del_match else float('inf')
+        
+        if bold_pos == float('inf') and del_pos == float('inf'):
+            segments.append(('normal', remaining))
+            break
+        elif bold_pos <= del_pos:
+            if bold_pos > 0:
+                segments.append(('normal', remaining[:bold_pos]))
+            segments.append(('bold', bold_match.group(1)))
+            remaining = remaining[bold_match.end():]
+        else:
+            if del_pos > 0:
+                segments.append(('normal', remaining[:del_pos]))
+            segments.append(('del', del_match.group(1)))
+            remaining = remaining[del_match.end():]
+    
+    # 渲染 segments
+    for seg_type, seg_text in segments:
+        run = p.add_run(seg_text)
+        if seg_type == 'bold':
+            _set_run_font(run, fname, fsize, True, RGBColor(0x00, 0x66, 0xCC))
+        elif seg_type == 'del':
+            _set_run_font(run, fname, fsize, False, RGBColor(0xCC, 0x00, 0x00))
+            run.font.strike = True
+        else:
+            _set_run_font(run, fname, fsize, fbold, color)
+    
     return p
 
 
@@ -621,12 +663,8 @@ def _wrap_run_with_comment(paragraph, run, comment_id: int):
 def _add_modified_paragraph(doc, text, level, comment_id=None, comments_part=None, lawyer='经办律师', risk_label='', reason='', suggestion='', is_modified_clause=False):
     """添加段落 + 可选批注框 + 建议文字颜色标注"""
     p = _add_para(doc, text, level=level)
-    # 修改的条款用蓝色标记
-    if is_modified_clause:
-        from docx.shared import RGBColor
-        for run in p.runs:
-            if run.text and run.text.strip():
-                run.font.color.rgb = RGBColor(0x00, 0x66, 0xCC)
+    # 修改标记: [已修改] 条款的标题用深蓝色 (整体标记)
+    # 具体修改的文字由 **加粗** → 蓝色, ~~删除~~ → 红色 处理
     if comment_id is not None and comments_part is not None:
         # 拼批注内容
         comment_text = f"风险等级: {_risk_label(risk_label)}\n"
@@ -687,44 +725,59 @@ def generate_modified_docx(
     matched_indices = set()
     lines = content.split('\n')
     comment_id = 0
+    from docx.shared import RGBColor
+    BLUE = RGBColor(0x00, 0x66, 0xCC)
+    
+    in_mod = False  # 是否在修改条款范围内
+    mod_lvl = -1
+    cur_sug_text = None  # 当前条款的修改建议
     
     for line in lines:
         s = line.strip()
         if not s:
+            # 空行: 如果在修改范围且有建议, 先输出修改说明
+            if in_mod and cur_sug_text:
+                _add_para(doc, f"【修改说明】{cur_sug_text}", level=9, color=BLUE)
+                cur_sug_text = None
             _add_blank(doc, 1)
             continue
         s = re.sub(r'^#+\s*', '', s)
         s_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s_clean = re.sub(r'`([^`]+)`', r'\1', s_clean)
-        # 检测 [已修改] 标记
         is_modified_clause = '[已修改]' in s_clean
         s_clean = s_clean.replace(' [已修改]', '').replace('[已修改]', '').strip()
         level, cleaned = _detect_clause_level(s_clean)
         
-        # 找匹配的意见
+        # 退出修改范围: 遇到同级或更高级标题 (level <= mod_lvl 且不是子项)
+        if in_mod and level >= 0 and level <= mod_lvl:
+            if cur_sug_text:
+                _add_para(doc, f"【修改说明】{cur_sug_text}", level=9, color=BLUE)
+                cur_sug_text = None
+            in_mod = False
+            mod_lvl = -1
+        
+        if is_modified_clause:
+            in_mod = True
+            mod_lvl = level
+        
+        # 按顺序匹配 suggestion 到 [已修改] 条款
         match = None
-        for idx, sug in enumerate(suggestions):
-            if idx in matched_indices:
-                continue
-            # 优先按 original_text 匹配
-            orig = (sug.get("original_text") or "").strip()
-            content_f = (sug.get("content") or "").strip()
-            # 取 original_text 前 10 字 或 content 中加粗标题
-            m = re.search(r'\*\*(.+?)\*\*', content_f)
-            keyword = (m.group(1) if m else orig[:10])[:15]
-            if keyword and keyword in cleaned:
-                match = (idx, sug)
-                break
-            # fallback: 取意见类型关键字
-            opt_type = sug.get("clause", "")[:8]
-            if opt_type and opt_type in cleaned:
-                match = (idx, sug)
-                break
+        if is_modified_clause and matched_indices:
+            pass  # 已有匹配的 suggestion 在处理中
+        if is_modified_clause:
+            # 找下一个未匹配的 suggestion
+            for idx, sug in enumerate(suggestions):
+                if idx not in matched_indices:
+                    match = (idx, sug)
+                    break
+        
+        should_blue = is_modified_clause or in_mod
         
         if match:
             idx, sug = match
             matched_indices.add(idx)
             comment_id += 1
+            cur_sug_text = sug.get("suggested_text") or sug.get("suggestion", "")
             _add_modified_paragraph(
                 doc, cleaned, level=level,
                 comment_id=comment_id, comments_part=comments_part,
@@ -732,17 +785,16 @@ def generate_modified_docx(
                 risk_label=sug.get("risk_level", "medium"),
                 reason=sug.get("reason") or sug.get("content", ""),
                 suggestion=sug.get("suggested_text") or sug.get("suggestion", ""),
-                is_modified_clause=is_modified_clause
+                is_modified_clause=should_blue
             )
-        elif is_modified_clause:
-            # 有 [已修改] 标记但没匹配到意见 → 蓝色渲染
-            from docx.shared import RGBColor
-            p = _add_para(doc, cleaned, level=level)
-            for run in p.runs:
-                if run.text and run.text.strip():
-                    run.font.color.rgb = RGBColor(0x00, 0x66, 0xCC)
+        elif should_blue:
+            p = _add_para(doc, cleaned, level=level, color=BLUE)
         else:
             _add_para(doc, cleaned, level=level)
+    
+    # 文件末尾还在修改范围内
+    if in_mod and cur_sug_text:
+        _add_para(doc, f"【修改说明】{cur_sug_text}", level=9, color=BLUE)
     
     # 4) 未匹配的意见 - 在末尾集中说明
     unmatched = [s for i, s in enumerate(suggestions) if i not in matched_indices]
@@ -933,55 +985,63 @@ def generate_pdf_from_docx_args(
     )
     
     story = []
-    # 正文
+    in_mod = False
+    mod_lvl = -1
+    cur_sug = None
+    
     for line in content.split('\n'):
         s = line.strip()
         if not s:
+            if in_mod and cur_sug:
+                story.append(Paragraph(f'<font color="#0066CC">\u3010\u4fee\u6539\u8bf4\u660e\u3011{cur_sug}</font>', styles['body']))
+                cur_sug = None
             story.append(Spacer(1, 0.5 * cm))
             continue
         s = re.sub(r'^#+\s*', '', s)
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
-        # 检测 [已修改] 标记
         is_mod = '[已修改]' in s
         s = s.replace(' [已修改]', '').replace('[已修改]', '').strip()
         level, cleaned = _detect_clause_level(s)
-        # 修改条款用蓝色
-        mod_color = '#0066CC' if is_mod else None
+        
+        if in_mod and level >= 0 and level <= mod_lvl:
+            if cur_sug:
+                story.append(Paragraph(f'<font color="#0066CC">\u3010\u4fee\u6539\u8bf4\u660e\u3011{cur_sug}</font>', styles['body']))
+                cur_sug = None
+            in_mod = False
+            mod_lvl = -1
+        
+        if is_mod:
+            in_mod = True
+            mod_lvl = level
+        
+        show_blue = is_mod or in_mod
+        mc = '#0066CC' if show_blue else None
+        
+        def _para(text, style, _mc=mc):
+            if _mc:
+                return Paragraph(f'<font color="{_mc}">{text}</font>', style)
+            return Paragraph(text, style)
+        
         try:
             if level == 0:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['title']))
-                else:
-                    story.append(Paragraph(cleaned, styles['title']))
+                story.append(_para(cleaned, styles['title']))
             elif level == 1:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h1']))
-                else:
-                    story.append(Paragraph(cleaned, styles['h1']))
+                story.append(_para(cleaned, styles['h1']))
             elif level == 2:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h2']))
-                else:
-                    story.append(Paragraph(cleaned, styles['h2']))
+                story.append(_para(cleaned, styles['h2']))
             elif level == 3:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['h3']))
-                else:
-                    story.append(Paragraph(cleaned, styles['h3']))
+                story.append(_para(cleaned, styles['h3']))
             elif level == 4 or level == 5:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['body_no_indent']))
-                else:
-                    story.append(Paragraph(cleaned, styles['body_no_indent']))
+                story.append(_para(cleaned, styles['body_no_indent']))
             else:
-                if mod_color:
-                    story.append(Paragraph(f'<font color="{mod_color}">{cleaned}</font>', styles['body']))
-                else:
-                    story.append(Paragraph(cleaned, styles['body']))
+                story.append(_para(cleaned, styles['body']))
         except Exception:
             cleaned_safe = cleaned.replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(cleaned_safe, styles['body']))
+    
+    if in_mod and cur_sug:
+        story.append(Paragraph(f'<font color="#0066CC">\u3010\u4fee\u6539\u8bf4\u660e\u3011{cur_sug}</font>', styles['body']))
 
     # 修改版: 末尾加修改建议
     if is_modified and suggestions:
