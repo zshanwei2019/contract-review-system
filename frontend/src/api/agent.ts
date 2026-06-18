@@ -127,4 +127,17 @@ export const agentApi = {
   testAIConnection() {
     return request.post('/agent/test-ai-connection')
   },
+
+  // ==================== RAG 条款检索 ====================
+  ragSearch(query: string, contractType?: string, topK: number = 5) {
+    return request.get('/agent/rag/search', { params: { query, contract_type: contractType, top_k: topK } })
+  },
+
+  ragStats() {
+    return request.get('/agent/rag/stats')
+  },
+
+  ragRebuild() {
+    return request.post('/agent/rag/rebuild')
+  },
 }

@@ -530,11 +530,56 @@ async def create_correction(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """提交人工修正"""
+    """提交人工修正 + 自动向量化写回 clause_embeddings (RAG 数据飞轮)"""
     correction = await submit_correction(
         db, review_case_id, current_user.id,
         original_opinion_id, corrected_opinion, correction_reason, correction_type,
     )
+    
+    # RAG 数据飞轮: 人工修正 → 向量化 → clause_embeddings
+    try:
+        from app.services.contract_rag import get_rag
+        from sqlalchemy import text as sql_text
+        
+        # 获取原审查意见
+        if original_opinion_id:
+            op_result = await db.execute(
+                sql_text("SELECT content, suggestion, risk_level, opinion_type FROM review_opinions WHERE id = :id"),
+                {"id": original_opinion_id}
+            )
+            op_row = op_result.fetchone()
+            if op_row:
+                # 用修正后的内容向量化
+                clause_text = corrected_opinion or (op_row[0] if op_row[0] else "")
+                suggestion = correction_reason or (op_row[1] if op_row[1] else "")
+                
+                rag = get_rag()
+                emb = rag.embedding.embed_one(clause_text)
+                
+                async with db.begin_nested():
+                    await db.execute(
+                        sql_text("""
+                            INSERT INTO clause_embeddings 
+                            (source_type, source_id, clause_text, suggestion_text, risk_level, embedding, model_name)
+                            VALUES ('correction', :sid, :clause, :suggestion, :risk, :emb::vector, :model)
+                        """),
+                        {
+                            "sid": correction.id,
+                            "clause": clause_text[:1000],
+                            "suggestion": suggestion[:1000],
+                            "risk": op_row[2] if op_row[2] else None,
+                            "emb": str(emb),
+                            "model": "BAAI/bge-small-zh-v1.5",
+                        }
+                    )
+                    await db.commit()
+                
+                from app.services.contract_rag import _rag_logger as _rl
+                _rl.info(f"人工修正 #{correction.id} 已向量化入库")
+    except Exception as e:
+        import logging
+        logging.getLogger("contract_rag").warning(f"人工修正向量化失败 (不影响主流程): {e}")
+    
     return {"message": "修正已提交", "correction_id": correction.id}
 
 
@@ -651,3 +696,131 @@ async def update_ai_config(
     settings.LLM_MODEL = updates["LLM_MODEL"]
     
     return {"message": "AI配置已更新", "status": "ok"}
+
+
+# ==================== RAG 条款检索 ====================
+
+@router.get("/rag/search")
+async def rag_search(
+    query: str = Query(..., description="检索文本"),
+    contract_type: Optional[str] = Query(None),
+    top_k: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+):
+    """RAG 条款检索: 输入文本 → 返回历史类似条款"""
+    from app.services.contract_rag import get_rag
+    try:
+        rag = get_rag()
+        ctx = rag.retrieve(query, contract_type=contract_type, top_k=top_k)
+        return {
+            "results": [
+                {
+                    "id": r.id,
+                    "source_type": r.source_type,
+                    "clause_text": r.clause_text,
+                    "suggestion_text": r.suggestion_text,
+                    "legal_basis": r.legal_basis,
+                    "contract_type": r.contract_type,
+                    "clause_type": r.clause_type,
+                    "risk_level": r.risk_level,
+                    "similarity": round(r.similarity, 4),
+                }
+                for r in ctx.retrieved
+            ],
+            "total": len(ctx.retrieved),
+            "formatted": ctx.formatted_block,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RAG检索失败: {e}")
+
+
+@router.get("/rag/stats")
+async def rag_stats(
+    current_user: User = Depends(get_current_user),
+):
+    """RAG 向量库统计"""
+    from sqlalchemy import text as sql_text
+    from app.core.database import async_session_factory as async_session
+    async with async_session() as session:
+        result = await session.execute(sql_text("""
+            SELECT 
+                source_type,
+                COUNT(*) as count,
+                AVG(use_count) as avg_use_count,
+                MAX(created_at) as latest
+            FROM clause_embeddings 
+            GROUP BY source_type
+            ORDER BY count DESC
+        """))
+        rows = result.fetchall()
+        
+        # 总数
+        total_result = await session.execute(sql_text("SELECT COUNT(*) FROM clause_embeddings"))
+        total = total_result.scalar()
+        
+        # 模型信息
+        model_result = await session.execute(sql_text("""
+            SELECT model_name, COUNT(*) as count 
+            FROM clause_embeddings 
+            WHERE model_name IS NOT NULL
+            GROUP BY model_name
+        """))
+        models = model_result.fetchall()
+    
+    return {
+        "total": total,
+        "by_source": [
+            {
+                "source_type": r[0],
+                "count": r[1],
+                "avg_use_count": float(r[2]) if r[2] else 0,
+                "latest": r[3].isoformat() if r[3] else None,
+            }
+            for r in rows
+        ],
+        "models": [{"name": r[0], "count": r[1]} for r in models],
+        "embedding_dim": 512,
+        "index_type": "hnsw",
+    }
+
+
+@router.post("/rag/rebuild")
+async def rag_rebuild(
+    current_user: User = Depends(require_role("admin", "superadmin")),
+):
+    """重建 RAG 向量库 (重新向量化所有数据)"""
+    from app.services.contract_rag import get_rag
+    import subprocess
+    import sys
+    
+    try:
+        # 清空旧数据
+        from sqlalchemy import text as sql_text
+        from app.core.database import async_session_factory as async_session
+        async with async_session() as session:
+            await session.execute(sql_text("TRUNCATE clause_embeddings RESTART IDENTITY"))
+            await session.commit()
+        
+        # 跑 build_rag_corpus
+        result = subprocess.run(
+            [sys.executable, "-m", "app.scripts.build_rag_corpus"],
+            capture_output=True,
+            text=True,
+            cwd="/opt/contract-review-system/backend",
+            timeout=300,
+        )
+        
+        if result.returncode != 0:
+            return {"status": "error", "stderr": result.stderr[-500:]}
+        
+        return {
+            "status": "ok",
+            "message": "RAG 向量库重建完成",
+            "stdout": result.stdout[-500:],
+        }
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "error": "重建超时 (5min)"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
