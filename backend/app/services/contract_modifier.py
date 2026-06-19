@@ -66,6 +66,19 @@ class ModificationResult:
     diff_summary: Optional[str] = None
 
 
+def _cn_clause_num(n):
+    """数字转中文条款号"""
+    cn = {1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七",8:"八",9:"九",10:"十",
+          11:"十一",12:"十二",13:"十三",14:"十四",15:"十五",16:"十六",17:"十七",18:"十八",19:"十九",20:"二十"}
+    if n <= 20:
+        return cn.get(n, str(n))
+    if n < 100:
+        a, b = divmod(n, 10)
+        return cn.get(a, str(a)) + "十" + (cn.get(b, str(b)) if b else "")
+    return str(n)
+
+
+
 class ContractModifier:
     """合同修改器"""
     
@@ -315,24 +328,23 @@ class ContractModifier:
         return suggestions
     
     def _generate_default_suggestion(self, category: str, content: str) -> str:
-        """生成默认修改建议"""
+        """生成默认修改建议 - 返回实际条款文本"""
         suggestions_map = {
-            "违约责任": "建议明确违约责任条款，包括违约金计算方式、赔偿范围和上限。",
-            "付款条件": "建议明确付款条件，包括付款时间、付款方式、发票要求等。",
-            "交付条款": "建议明确交付条款，包括交付时间、地点、验收标准和程序。",
-            "知识产权": "建议明确知识产权归属，包括背景知识产权和前景知识产权的划分。",
-            "保密条款": "建议明确保密义务的范围、期限和例外情况。",
-            "争议解决": "建议明确争议解决方式和管辖法院/仲裁机构。",
-            "合同期限": "建议明确合同期限、续约条件和提前终止条款。",
-            "质量标准": "建议明确质量标准、验收程序和不合格处理方式。",
+            "违约责任": "任何一方违反本合同约定的，应承担违约责任。违约方应向守约方支付违约金，违约金按合同总金额的万分之五/日计算；违约金不足以弥补守约方损失的，违约方还应赔偿守约方的实际损失。赔偿范围包括但不限于直接损失、预期利益损失、律师费、诉讼费等合理费用。",
+            "付款条件": "甲方应在收到乙方开具的合规发票后【30】个工作日内支付款项。甲方以银行转账方式将款项支付至乙方指定账户。乙方应在付款前向甲方提供等额、合法、有效的增值税专用发票。如甲方逾期付款，应按未付金额的万分之三/日向乙方支付违约金。",
+            "交付条款": "乙方应于【日期】前将符合合同约定的标的物交付至甲方指定地点。交付前标的物的毁损、灭失风险由乙方承担，交付后由甲方承担。甲方应在收到标的物后【7】个工作日内完成验收，验收不合格的，乙方应在【15】个工作日内免费更换或修复。",
+            "知识产权": "本合同履行过程中产生的新知识产权（前景知识产权）归甲方所有。双方各自原有的知识产权（背景知识产权）仍归各自所有。乙方不得将甲方的技术资料、商业信息用于本合同之外的任何目的。未经甲方书面同意，乙方不得将相关知识产权转让或授权给第三方。",
+            "保密条款": "双方对在本合同履行过程中获知的对方商业秘密、技术秘密及其他保密信息承担保密义务。保密期限为合同终止后【3】年。保密信息不包括：已公开的信息、合法渠道获得的信息、法律要求披露的信息。违反保密义务的一方应赔偿对方因此遭受的全部损失。",
+            "争议解决": "因本合同引起的或与本合同有关的任何争议，双方应首先通过友好协商解决；协商不成的，任何一方均有权向甲方所在地有管辖权的人民法院提起诉讼。争议解决期间，合同的继续履行部分不受影响。",
+            "合同期限": "本合同自双方签字盖章之日起生效，有效期至【日期】止。合同到期前【30】日，双方可协商续约。任何一方需提前终止合同的，应提前【30】日书面通知对方，并承担相应的违约责任。",
+            "质量标准": "标的物应符合国家相关质量标准及合同约定的技术规格。乙方提供的产品/服务质量保证期为【12】个月，自验收合格之日起算。保证期内出现质量问题的，乙方应免费维修或更换。",
+            "不可抗力": "因不可抗力导致一方不能履行合同义务的，应在不可抗力发生后【15】日内书面通知对方，并提供相关证明文件。不可抗力持续超过【30】日的，任何一方有权解除合同。不可抗力包括但不限于自然灾害、战争、政府行为、疫情等。",
         }
-        
         for key, suggestion in suggestions_map.items():
             if key in category:
                 return suggestion
-        
-        return "建议修改此条款以降低合同风险，保护委托方利益。"
-    
+        return "建议修改此条款以降低合同风险，明确双方权利义务，保护委托方合法权益。"
+
     def _generate_reason(self, category: str, content: str) -> str:
         """生成修改理由"""
         if "违约" in category:
@@ -485,9 +497,12 @@ class ContractModifier:
     async def rewrite_contract_with_ai(
         self,
         contract: Contract,
-        suggestions_to_apply: List[ModificationSuggestion]
+        suggestions_to_apply: List[ModificationSuggestion],
+        original_content: str = ""
     ) -> str:
-        """使用AI重写合同内容，应用修改建议"""
+        """使用AI重写合同内容，应用修改建议。
+        当 original_content > 100 字符时, 使用改写模式; 否则生成模式。
+        """
         if not self.api_key:
             return self._rewrite_with_rules(contract, suggestions_to_apply)
         
@@ -516,7 +531,33 @@ class ContractModifier:
 - 法律依据：{s.legal_basis}
 - 优先级：{s.priority.value}"""
         
-        prompt = f"""请根据以下合同信息和修改建议，生成一份完整的修改后合同文档。
+        has_original = bool(original_content) and len(original_content) > 100
+
+        if has_original:
+            truncated = original_content[:12000]
+            prompt = f"""请基于以下原始合同正文，根据修改建议进行逐条修改。
+
+【合同信息】
+{contract_info}
+
+【原始合同正文】
+{truncated}
+
+【需要应用的修改建议】
+{suggestions_text}
+
+【要求】
+1. 基于原始合同正文进行修改，保留原始合同的结构和未涉及修改的条款原文
+2. 只修改与修改建议相关的条款，其他条款保持原样
+3. 使用专业、准确的法律术语
+4. 符合中国法律法规
+5. 使用Markdown格式输出
+6. 不要包含任何已修改标记或修改说明部分
+7. 不要添加开场白，直接输出合同正文
+
+请直接输出修改后的完整合同正文："""
+        else:
+            prompt = f"""请根据以下合同信息和修改建议，生成一份完整的修改后合同文档。
 
 【合同信息】
 {contract_info}
@@ -531,13 +572,15 @@ class ContractModifier:
 4. 保持合同的整体结构和意图
 5. 符合中国法律法规
 6. 使用Markdown格式输出
-7. 在修改的条款标题旁标注 [已修改] 标记
-8. 在文档末尾添加"修改说明"部分，简述每条修改了什么
+7. 不要包含任何已修改标记或修改说明部分
+8. 不要添加开场白，直接输出合同正文
 
 请直接输出完整的合同文档内容："""
         
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            timeout_val = 120.0 if has_original else 60.0
+            max_tokens_val = 16000 if has_original else 8000
+            async with httpx.AsyncClient(timeout=timeout_val) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
@@ -557,7 +600,7 @@ class ContractModifier:
                             }
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 8000
+                        "max_tokens": max_tokens_val
                     }
                 )
                 
@@ -578,63 +621,118 @@ class ContractModifier:
         contract: Contract,
         suggestions_to_apply: List[ModificationSuggestion]
     ) -> str:
-        """使用规则引擎生成修改后合同（降级方案）"""
+        """使用规则引擎生成修改后合同（降级方案）。P3: 优先使用合同类型模板。"""
+        return self._generate_from_template_with_type(contract, suggestions_to_apply)
+
+    # === P3: 合同模板库集成 ===
+    _TEMPLATE_MAP = {
+        "procurement": "01-procurement.md",
+        "sales": "02-sales.md",
+        "outsourcing": "03-outsourcing.md",
+        "equipment": "04-equipment.md",
+        "lease": "05-lease.md",
+        "power_supply": "06-power_supply.md",
+        "nda": "07-nda.md",
+        "service": "08-service.md",
+        "construction": "09-construction.md",
+        "labor": "10-labor.md",
+        "other": "11-retirement.md",
+    }
+    _TEMPLATE_DIR = "/opt/contract-review-system/contract_templates"
+
+    def _load_template_by_type(self, contract_type: str) -> str:
+        """根据合同类型加载模板内容"""
+        import os
+        type_key = contract_type or "other"
+        if type_key == "other":
+            return None
+        filename = self._TEMPLATE_MAP.get(type_key)
+        if not filename:
+            return None
+        filepath = os.path.join(self._TEMPLATE_DIR, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return None
+
+    def _generate_from_template_with_type(self, contract, suggestions_to_apply) -> str:
+        """使用合同类型模板生成修改后合同"""
+        contract_type = ""
+        try:
+            contract_type = contract.contract_type.value if contract.contract_type else ""
+        except Exception:
+            contract_type = str(contract.contract_type or "")
+
+        template = self._load_template_by_type(contract_type)
+        if not template:
+            return self._generate_from_template(contract, suggestions_to_apply)
+
+        result = template
+        suggestion_clauses = []
+        clause_num = 1
+        for s in suggestions_to_apply:
+            text = s.suggested_text or ""
+            if len(text) < 20:
+                text = self._generate_default_suggestion(s.clause or "", s.original_text or "")
+            if text:
+                suggestion_clauses.append(f"第{_cn_clause_num(clause_num)}条 {s.clause}\n\n{text}\n")
+                clause_num += 1
+
+        suggestions_block = "\n".join(suggestion_clauses)
+        if suggestions_block:
+            insert_idx = -1
+            for marker in ["甲方（盖章）", "甲方（签字", "甲方(盖章)", "甲方(签字", "签署"]:
+                idx = result.find(marker)
+                if idx > 0:
+                    insert_idx = idx
+                    break
+            supplement = f"\n## 补充条款\n\n{suggestions_block}\n\n"
+            if insert_idx > 0:
+                result = result[:insert_idx] + supplement + result[insert_idx:]
+            else:
+                result += f"\n\n## 补充条款\n\n{suggestions_block}\n"
+
+        return result
+
+    def _generate_from_template(self, contract, suggestions_to_apply) -> str:
+        """没有模板匹配时的默认生成"""
         lines = [
-            f"# {contract.title}",
+            f"# {contract.title or '合同'}",
             "",
-            f"**合同编号**：{contract.contract_no or '待填写'}",
-            f"**甲方**：{contract.party_a or '待填写'}",
-            f"**乙方**：{contract.party_b or '待填写'}",
-            f"**合同金额**：{contract.amount or '待填写'} {contract.currency or 'CNY'}",
-            f"**签订日期**：{contract.sign_date or '待填写'}",
-            f"**有效期**：{contract.effective_date or '待填写'} 至 {contract.expiry_date or '待填写'}",
+            f"合同编号：{contract.contract_no or '待填写'}",
+            f"甲方：{contract.party_a or '待填写'}",
+            f"乙方：{contract.party_b or '待填写'}",
+            f"合同金额：{contract.amount or '待填写'} {contract.currency or 'CNY'}",
+            f"签订日期：{contract.sign_date or '待填写'}",
+            f"有效期：{contract.effective_date or '待填写'} 至 {contract.expiry_date or '待填写'}",
             "",
-            "---",
+            f"第一条 合同目的",
+            f"本合同旨在明确甲乙双方在{contract.title or '本'}项目中的权利和义务。",
             "",
-            "## 合同条款",
-            "",
-            "### 第一条 合同目的",
-            f"本合同旨在明确甲乙双方在{contract.title}项目中的权利和义务。",
-            "",
-            "### 第二条 合同金额与支付",
+            f"第二条 合同金额与支付",
             f"合同总金额为{contract.amount or '待填写'}{contract.currency or 'CNY'}。",
             "",
         ]
-        
-        # 添加修改后的条款
         clause_num = 3
         for s in suggestions_to_apply:
-            lines.append(f"### 第{clause_num}条 {s.clause} **[已修改]**")
+            lines.append(f"第{_cn_clause_num(clause_num)}条 {s.clause}")
             lines.append("")
-            lines.append(s.suggested_text)
-            lines.append("")
-            lines.append(f"> **修改理由**：{s.reason}")
-            lines.append(f"> **法律依据**：{s.legal_basis}")
+            text = s.suggested_text or ""
+            if len(text) < 20:
+                text = self._generate_default_suggestion(s.clause or "", s.original_text or "")
+            lines.append(text)
             lines.append("")
             clause_num += 1
-        
-        # 添加标准条款
-        lines.extend([
-            f"### 第{clause_num}条 违约责任",
-            "任何一方违反本合同约定的，应承担违约责任，赔偿对方因此遭受的损失。",
-            "",
-            f"### 第{clause_num + 1}条 争议解决",
-            "因本合同引起的或与本合同有关的任何争议，双方应友好协商解决；协商不成的，提交甲方所在地人民法院诉讼解决。",
-            "",
-            f"### 第{clause_num + 2}条 其他",
-            "本合同一式两份，甲乙双方各执一份，具有同等法律效力。",
-            "",
-            "---",
-            "",
-            "## 修改说明",
-            "",
-            f"本合同已根据AI审查建议进行了 {len(suggestions_to_apply)} 处修改：",
-            "",
-        ])
-        
-        for i, s in enumerate(suggestions_to_apply, 1):
-            lines.append(f"{i}. **{s.clause}**：{s.reason}")
-        
+        lines.append(f"第{_cn_clause_num(clause_num)}条 违约责任")
+        lines.append("任何一方违反本合同约定的，应承担违约责任，赔偿对方因此遭受的损失。")
+        lines.append("")
+        lines.append(f"第{_cn_clause_num(clause_num + 1)}条 争议解决")
+        lines.append("因本合同引起的或与本合同有关的任何争议，双方应友好协商解决；协商不成的，提交甲方所在地人民法院诉讼解决。")
+        lines.append("")
+        lines.append(f"第{_cn_clause_num(clause_num + 2)}条 其他")
+        lines.append("本合同一式两份，甲乙双方各执一份，具有同等法律效力。")
+        lines.append("")
         return "\n".join(lines)
 
     async def _get_next_version(self, db: AsyncSession, contract_id: int) -> int:

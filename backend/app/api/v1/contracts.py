@@ -783,7 +783,25 @@ async def export_modified_contract(
         with open(cache_file, "r") as f:
             ai_content = f.read()
     elif review_task and sug_objs:
-        ai_content = await contract_modifier.rewrite_contract_with_ai(contract, sug_objs)
+        # P0: 获取原始合同文本传给 AI
+        orig_content = ""
+        if contract.file_path:
+            import os as _os
+            if _os.path.exists(contract.file_path):
+                try:
+                    from app.services.file_parser import extract_text_from_file
+                    orig_content = await extract_text_from_file(contract.file_path)
+                except Exception:
+                    pass
+        # P1: timeout 120s
+        try:
+            import asyncio
+            ai_content = await asyncio.wait_for(
+                contract_modifier.rewrite_contract_with_ai(contract, sug_objs, original_content=orig_content),
+                timeout=120.0
+            )
+        except asyncio.TimeoutError:
+            ai_content = contract_modifier._rewrite_with_rules(contract, sug_objs)
         with open(cache_file, "w") as f:
             f.write(ai_content)
     else:
