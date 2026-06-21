@@ -294,30 +294,42 @@ def _parse_xmind_xml(element, lines, depth):
 
 
 def _extract_image_ocr(file_path: str, max_length: int) -> str:
-    """OCR图片文字识别（中英文）- 使用EasyOCR"""
+    """OCR图片文字识别（中英文）- 首选PaddleOCR, 降级EasyOCR, 最后Tesseract"""
+    # 1. PaddleOCR (中文准确率最高)
+    try:
+        from paddleocr import PaddleOCR
+        ocr = PaddleOCR(lang='ch')
+        result = ocr.ocr(file_path)
+        lines = []
+        if result and result[0]:
+            for line in result[0]:
+                text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
+                lines.append(text)
+        full_text = '\n'.join(lines)
+        if full_text.strip():
+            return full_text[:max_length]
+    except Exception as e:
+        logger.warning(f"PaddleOCR识别失败: {e}, 尝试EasyOCR")
+
+    # 2. EasyOCR (降级)
     try:
         import easyocr
-        
-        # 初始化EasyOCR（中文简体+英文）
         reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
-        
-        # 执行OCR识别
         result = reader.readtext(file_path, detail=0)
-        
-        # 提取文本
         full_text = '\n'.join(result)
         return full_text[:max_length]
     except ImportError:
-        logger.warning("EasyOCR未安装，尝试使用pytesseract")
-        # 回退到tesseract
-        try:
-            import pytesseract
-            from PIL import Image
-            img = Image.open(file_path)
-            text = pytesseract.image_to_string(img, lang='chi_sim+eng')
-            return text[:max_length]
-        except:
-            return None
+        logger.warning("EasyOCR未安装，尝试pytesseract")
     except Exception as e:
-        logger.error(f"OCR识别失败: {e}")
+        logger.warning(f"EasyOCR识别失败: {e}, 尝试pytesseract")
+
+    # 3. Tesseract (最后兜底)
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(file_path)
+        text = pytesseract.image_to_string(img, lang='chi_sim+eng')
+        return text[:max_length]
+    except Exception as e:
+        logger.error(f"所有OCR引擎均失败: {e}")
         return None
