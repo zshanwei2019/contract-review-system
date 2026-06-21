@@ -4,6 +4,8 @@
 - 语义比对
 - 相对方画像
 - 外部风险评估
+- 双语合同审查
+- 法规动态更新
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -265,3 +267,177 @@ async def get_negotiation_playbook(
 
     playbook = generate_playbook(findings)
     return playbook
+
+
+# ========== P3: 双语合同审查 + 法规动态更新 ==========
+
+@router.post("/contracts/bilingual-review")
+async def bilingual_review(
+    cn_text: str = Body(..., description="中文合同文本"),
+    en_text: str = Body(..., description="英文合同文本"),
+    contract_type: str = Body("other", description="合同类型"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    双语合同审查
+    中英文段落对齐 + 术语一致性 + 条款内容对比 + 语言优先级检查
+    """
+    from app.services.bilingual_review import review_bilingual_contract
+
+    result = review_bilingual_contract(cn_text, en_text, contract_type)
+    return result
+
+
+@router.post("/contracts/{contract_id}/bilingual-review")
+async def bilingual_review_by_contract(
+    contract_id: int,
+    cn_text: Optional[str] = Body(None, description="中文合同文本(可选,默认从文件提取)"),
+    en_text: Optional[str] = Body(None, description="英文合同文本(可选,默认从文件提取)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    双语合同审查 (按合同ID)
+    """
+    from app.services.bilingual_review import review_bilingual_contract
+    from app.services.file_parser import extract_text_from_file
+
+    result = await db.execute(select(Contract).where(Contract.id == contract_id))
+    contract = result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="合同不存在")
+
+    # 尝试从文件提取
+    if not cn_text and contract.file_path:
+        import os
+        fp = contract.file_path
+        if not os.path.isabs(fp):
+            fp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), fp)
+        # 中英文文件路径: 尝试 _cn / _en 后缀
+        cn_path = fp.replace(".docx", "_cn.docx").replace(".pdf", "_cn.pdf")
+        en_path = fp.replace(".docx", "_en.docx").replace(".pdf", "_en.pdf")
+        if os.path.exists(cn_path):
+            cn_text = await extract_text_from_file(cn_path)
+        if os.path.exists(en_path):
+            en_text = await extract_text_from_file(en_path)
+
+    if not cn_text or not en_text:
+        raise HTTPException(status_code=400, detail="需要同时提供中文和英文合同文本")
+
+    ct = contract.contract_type.value if contract.contract_type else "other"
+    result = review_bilingual_contract(cn_text, en_text, ct)
+    return result
+
+
+@router.post("/contracts/compliance-check")
+async def compliance_check(
+    contract_text: str = Body(..., description="合同文本"),
+    contract_type: str = Body("other", description="合同类型"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    法规合规性检查
+    基于最新法规(民法典/公司法/劳动法等)检查合同条款合规性
+    """
+    from app.services.regulation_updater import check_full_contract_compliance
+
+    result = check_full_contract_compliance(contract_text, contract_type)
+    return result
+
+
+@router.post("/contracts/{contract_id}/compliance-check")
+async def compliance_check_by_contract(
+    contract_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    法规合规性检查 (按合同ID)
+    """
+    from app.services.regulation_updater import check_full_contract_compliance
+    from app.services.file_parser import extract_text_from_file
+
+    result = await db.execute(select(Contract).where(Contract.id == contract_id))
+    contract = result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="合同不存在")
+
+    full_text = ""
+    if contract.file_path:
+        import os
+        fp = contract.file_path
+        if not os.path.isabs(fp):
+            fp = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), fp)
+        if os.path.exists(fp):
+            full_text = await extract_text_from_file(fp)
+
+    if not full_text:
+        raise HTTPException(status_code=400, detail="合同内容为空")
+
+    ct = contract.contract_type.value if contract.contract_type else "other"
+    result = check_full_contract_compliance(full_text, ct)
+    return result
+
+
+@router.get("/regulations/search")
+async def search_regulations_api(
+    query: str = Query(..., description="搜索关键词"),
+    category: Optional[str] = Query(None, description="法规分类: civil/commercial/labor/tax/ip"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    搜索相关法规
+    """
+    from app.services.regulation_updater import search_regulations
+
+    regs = search_regulations(query, category)
+    return {
+        "query": query,
+        "count": len(regs),
+        "results": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "article": r.article,
+                "content": r.content,
+                "category": r.category,
+                "effective_date": r.effective_date,
+                "status": r.status,
+                "keywords": r.keywords,
+            }
+            for r in regs
+        ],
+    }
+
+
+@router.get("/regulations/updates")
+async def get_regulation_updates_api(
+    since_date: Optional[str] = Query(None, description="起始日期 YYYY-MM-DD"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取法规变更列表
+    """
+    from app.services.regulation_updater import get_regulation_updates
+
+    updates = get_regulation_updates(since_date)
+    return {
+        "since_date": since_date or "6 months ago",
+        "count": len(updates),
+        "updates": updates,
+    }
+
+
+@router.post("/contracts/regulation-impact")
+async def assess_regulation_impact_api(
+    contract_text: str = Body(..., description="合同文本"),
+    contract_type: str = Body("other", description="合同类型"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    评估法规变更对合同的影响
+    """
+    from app.services.regulation_updater import assess_regulation_impact
+
+    result = assess_regulation_impact(contract_text, contract_type)
+    return result
