@@ -232,6 +232,225 @@
         </el-table>
         <el-empty v-else description="暂无版本记录" />
       </div>
+
+      <!-- 🔬 高级AI分析 -->
+      <div class="advanced-section">
+        <h3>🔬 高级AI分析</h3>
+        <el-tabs v-model="advancedTab" type="border-card">
+          <el-tab-pane label="📋 条款审查" name="clauses">
+            <div v-if="clauseReviewData" class="tab-content">
+              <el-row :gutter="16" style="margin-bottom: 16px;">
+                <el-col :span="6">
+                  <el-statistic title="条款数" :value="clauseReviewData.summary?.total_clauses || 0" />
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="建议数" :value="clauseReviewData.summary?.total_suggestions || 0" />
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="AI调用" :value="clauseReviewData.ai_calls_made || 0" />
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="节省调用" :value="clauseReviewData.ai_calls_saved || 0" />
+                </el-col>
+              </el-row>
+              <el-collapse v-if="clauseReviewData.clause_reviews?.length">
+                <el-collapse-item
+                  v-for="cr in clauseReviewData.clause_reviews"
+                  :key="cr.clause_index"
+                  :title="`${cr.clause_title || '条款 ' + cr.clause_index} — 风险: ${cr.risk_level || '无'} (${cr.risk_score || 0}分)`"
+                >
+                  <p><strong>内容:</strong> {{ cr.clause_content?.substring(0, 200) }}</p>
+                  <div v-if="cr.findings?.length">
+                    <p><strong>发现:</strong></p>
+                    <ul>
+                      <li v-for="(f, i) in cr.findings" :key="i">
+                        <el-tag :type="f.severity === 'high' ? 'danger' : f.severity === 'medium' ? 'warning' : 'info'" size="small">{{ f.severity }}</el-tag>
+                        {{ f.description }}
+                      </li>
+                    </ul>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+              <el-empty v-else description="暂无条款审查数据" />
+            </div>
+            <div v-else-if="clauseReviewLoading" style="text-align:center;padding:40px;">
+              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+              <p>正在审查...</p>
+            </div>
+            <div v-else style="text-align:center;padding:20px;">
+              <el-button type="primary" :loading="clauseReviewLoading" @click="loadClauseReview">开始条款级审查</el-button>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="📝 义务清单" name="obligations">
+            <div v-if="obligationsData" class="tab-content">
+              <el-row :gutter="16" style="margin-bottom: 16px;">
+                <el-col :span="8">
+                  <el-statistic title="总义务数" :value="obligationsData.summary?.total_obligations || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="甲方义务" :value="obligationsData.summary?.party_a_count || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="乙方义务" :value="obligationsData.summary?.party_b_count || 0" />
+                </el-col>
+              </el-row>
+              <el-table v-if="obligationsData.obligations?.length" :data="obligationsData.obligations" border>
+                <el-table-column prop="type" label="类型" width="100">
+                  <template #default="{ row }">
+                    <el-tag size="small">{{ obligationTypeLabels[row.type] || row.type }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="party" label="义务方" width="100" />
+                <el-table-column prop="action" label="义务内容" min-width="250" show-overflow-tooltip />
+                <el-table-column prop="deadline" label="截止日期" width="120" />
+                <el-table-column prop="status" label="状态" width="100">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 'pending' ? 'warning' : row.status === 'completed' ? 'success' : 'info'" size="small">
+                      {{ obligationStatusLabels[row.status] || row.status }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <el-empty v-else description="未提取到义务" />
+            </div>
+            <div v-else-if="obligationsLoading" style="text-align:center;padding:40px;">
+              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+              <p>正在提取义务...</p>
+            </div>
+            <div v-else style="text-align:center;padding:20px;">
+              <el-button type="primary" :loading="obligationsLoading" @click="loadObligations">提取义务清单</el-button>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="🎯 谈判策略" name="playbook">
+            <div v-if="playbookData" class="tab-content">
+              <el-row :gutter="16" style="margin-bottom: 16px;">
+                <el-col :span="8">
+                  <el-statistic title="策略项数" :value="playbookData.summary?.total_items || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="底线条款" :value="playbookData.summary?.insist_count || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="可协商" :value="playbookData.summary?.negotiable_count || 0" />
+                </el-col>
+              </el-row>
+              <el-timeline v-if="playbookData.strategies?.length">
+                <el-timeline-item
+                  v-for="(s, i) in playbookData.strategies"
+                  :key="i"
+                  :color="stanceColors[s.stance] || '#909399'"
+                  :timestamp="`第${i+1}步`"
+                >
+                  <el-card shadow="hover">
+                    <template #header>
+                      <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span><el-tag :type="stanceTagTypes[s.stance]" size="small">{{ stanceLabels[s.stance] || s.stance }}</el-tag> {{ s.clause_title }}</span>
+                      </div>
+                    </template>
+                    <p><strong>底线:</strong> {{ s.bottom_line }}</p>
+                    <p><strong>话术:</strong> {{ s.talking_point }}</p>
+                    <p v-if="s.fallback"><strong>次选方案:</strong> {{ s.fallback }}</p>
+                    <p v-if="s.trade_item"><strong>交换条件:</strong> {{ s.trade_item }}</p>
+                  </el-card>
+                </el-timeline-item>
+              </el-timeline>
+              <el-empty v-else description="暂无谈判策略" />
+            </div>
+            <div v-else-if="playbookLoading" style="text-align:center;padding:40px;">
+              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+              <p>正在生成策略...</p>
+            </div>
+            <div v-else style="text-align:center;padding:20px;">
+              <el-button type="primary" :loading="playbookLoading" @click="loadPlaybook">生成谈判策略</el-button>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="👤 相对方画像" name="party">
+            <div v-if="partyProfileData" class="tab-content">
+              <el-row :gutter="16" style="margin-bottom: 16px;">
+                <el-col :span="6">
+                  <el-statistic title="风险等级">
+                    <template #default>
+                      <el-tag :type="riskTierColors[partyProfileData.risk_tier]" size="large">
+                        {{ riskTierLabels[partyProfileData.risk_tier] || partyProfileData.risk_tier }}
+                      </el-tag>
+                    </template>
+                  </el-statistic>
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="谈判风格" :value="partyProfileData.negotiation_style || '-'" />
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="风险趋势" :value="partyProfileData.risk_trend || '-'" />
+                </el-col>
+                <el-col :span="6">
+                  <el-statistic title="历史合同" :value="partyProfileData.total_contracts || 0" />
+                </el-col>
+              </el-row>
+              <div v-if="partyProfileData.recommendations?.length" style="margin-top:16px;">
+                <h4>建议</h4>
+                <ul>
+                  <li v-for="(r, i) in partyProfileData.recommendations" :key="i">{{ r }}</li>
+                </ul>
+              </div>
+              <div v-if="partyProfileData.risk_patterns?.length" style="margin-top:16px;">
+                <h4>风险模式</h4>
+                <el-tag v-for="(p, i) in partyProfileData.risk_patterns" :key="i" style="margin:2px;">{{ p }}</el-tag>
+              </div>
+            </div>
+            <div v-else-if="partyProfileLoading" style="text-align:center;padding:40px;">
+              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+              <p>正在分析...</p>
+            </div>
+            <div v-else style="text-align:center;padding:20px;">
+              <el-button v-if="contract.party_b" type="primary" :loading="partyProfileLoading" @click="loadPartyProfile">分析 {{ contract.party_b }}</el-button>
+              <el-empty v-else description="未填写乙方信息" />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="⚖️ 合规检查" name="compliance">
+            <div v-if="complianceData" class="tab-content">
+              <el-alert
+                :title="`合规风险: ${complianceData.summary?.overall_risk || '无'}`"
+                :type="complianceData.summary?.overall_risk === 'high' ? 'error' : complianceData.summary?.overall_risk === 'medium' ? 'warning' : 'success'"
+                :closable="false" show-icon style="margin-bottom:16px;"
+              />
+              <el-row :gutter="16" style="margin-bottom: 16px;">
+                <el-col :span="8">
+                  <el-statistic title="问题总数" :value="complianceData.summary?.total_issues || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="高风险" :value="complianceData.summary?.risk_distribution?.high || 0" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="中风险" :value="complianceData.summary?.risk_distribution?.medium || 0" />
+                </el-col>
+              </el-row>
+              <el-table v-if="complianceData.issues?.length" :data="complianceData.issues" border>
+                <el-table-column label="严重性" width="80">
+                  <template #default="{ row }">
+                    <el-tag :type="row.severity === 'high' ? 'danger' : 'warning'" size="small">{{ row.severity }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="type" label="类型" width="160" />
+                <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+                <el-table-column prop="regulation" label="法规依据" width="200" show-overflow-tooltip />
+                <el-table-column prop="suggestion" label="建议" min-width="200" show-overflow-tooltip />
+              </el-table>
+              <el-empty v-else description="未发现合规问题" />
+            </div>
+            <div v-else-if="complianceLoading" style="text-align:center;padding:40px;">
+              <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+              <p>正在检查...</p>
+            </div>
+            <div v-else style="text-align:center;padding:20px;">
+              <el-button type="primary" :loading="complianceLoading" @click="loadCompliance">合规性检查</el-button>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
     </el-card>
     
     <!-- AI审查结果对话框 -->
@@ -427,6 +646,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
 import { risksApi } from '@/api/risks'
+import { advancedApi } from '@/api/advanced'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
 import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -454,6 +674,107 @@ const selectedSuggestions = ref<number[]>([])
 const showModificationDialog = ref(false)
 const applyingModifications = ref(false)
 const diffSummary = ref('')
+
+// ========== 高级AI分析 ==========
+const advancedTab = ref('clauses')
+const clauseReviewLoading = ref(false)
+const clauseReviewData = ref<any>(null)
+const obligationsLoading = ref(false)
+const obligationsData = ref<any>(null)
+const playbookLoading = ref(false)
+const playbookData = ref<any>(null)
+const partyProfileLoading = ref(false)
+const partyProfileData = ref<any>(null)
+const complianceLoading = ref(false)
+const complianceData = ref<any>(null)
+
+const obligationTypeLabels: Record<string, string> = {
+  payment: '付款', delivery: '交付', notice: '通知',
+  confidentiality: '保密', non_compete: '竞业', insurance: '保险',
+  maintenance: '维护', report: '报告', other: '其他',
+}
+const obligationStatusLabels: Record<string, string> = {
+  pending: '待履行', in_progress: '履行中', completed: '已完成', overdue: '已逾期',
+}
+const stanceLabels: Record<string, string> = {
+  INSIST: '必须坚持', PUSH_BACK: '坚决反对', NEGOTIATE: '重点谈判',
+  COMPROMISE: '可妥协', ACCEPT: '可接受',
+}
+const stanceTagTypes: Record<string, string> = {
+  INSIST: 'danger', PUSH_BACK: 'danger', NEGOTIATE: 'warning',
+  COMPROMISE: 'info', ACCEPT: 'success',
+}
+const stanceColors: Record<string, string> = {
+  INSIST: '#f56c6c', PUSH_BACK: '#e6a23c', NEGOTIATE: '#409eff',
+  COMPROMISE: '#909399', ACCEPT: '#67c23a',
+}
+const riskTierLabels: Record<string, string> = {
+  LOW: '低风险', MODERATE: '中等风险', ELEVATED: '较高风险', HIGH: '高风险', UNKNOWN: '未知',
+}
+const riskTierColors: Record<string, string> = {
+  LOW: 'success', MODERATE: 'info', ELEVATED: 'warning', HIGH: 'danger', UNKNOWN: 'info',
+}
+
+const loadClauseReview = async () => {
+  clauseReviewLoading.value = true
+  try {
+    clauseReviewData.value = await advancedApi.clauseReview(contractId.value)
+    ElMessage.success('条款审查完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '条款审查失败')
+  } finally {
+    clauseReviewLoading.value = false
+  }
+}
+
+const loadObligations = async () => {
+  obligationsLoading.value = true
+  try {
+    obligationsData.value = await advancedApi.getObligations(contractId.value)
+    ElMessage.success('义务提取完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '义务提取失败')
+  } finally {
+    obligationsLoading.value = false
+  }
+}
+
+const loadPlaybook = async () => {
+  playbookLoading.value = true
+  try {
+    playbookData.value = await advancedApi.getPlaybook(contractId.value)
+    ElMessage.success('策略生成完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '策略生成失败')
+  } finally {
+    playbookLoading.value = false
+  }
+}
+
+const loadPartyProfile = async () => {
+  if (!contract.value.party_b) return
+  partyProfileLoading.value = true
+  try {
+    partyProfileData.value = await advancedApi.getPartyProfile(contract.value.party_b)
+    ElMessage.success('画像分析完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '画像分析失败')
+  } finally {
+    partyProfileLoading.value = false
+  }
+}
+
+const loadCompliance = async () => {
+  complianceLoading.value = true
+  try {
+    complianceData.value = await advancedApi.complianceCheckByContract(contractId.value)
+    ElMessage.success('合规检查完成')
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '合规检查失败')
+  } finally {
+    complianceLoading.value = false
+  }
+}
 
 const contractId = computed(() => Number(route.params.id))
 
@@ -995,5 +1316,21 @@ onMounted(() => {
   margin-top: 12px;
   display: flex;
   gap: 8px;
+}
+
+.advanced-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+}
+
+.advanced-section h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tab-content {
+  padding: 8px 0;
 }
 </style>
