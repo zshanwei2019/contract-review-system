@@ -842,6 +842,19 @@ def generate_modified_docx(
 
 # ============== 清洁版主函数 ==============
 
+def _clean_export_content(content: str) -> str:
+    """清洗导出内容: 去掉标记、修改说明、markdown代码块等"""
+    c = content
+    c = re.sub(r'^```(?:markdown|md)?\s*\n?', '', c)
+    c = re.sub(r'\n?```\s*$', '', c)
+    c = re.sub(r'\s*\[已修改\]', '', c)
+    c = re.sub(r'【修改说明】[^\n]*\n?', '', c)
+    c = re.sub(r'---+\s*修改说明.*?(?=\n\n|\Z)', '', c, flags=re.DOTALL)
+    c = re.sub(r'^修改说明\s*\n(?:\d+\..*?\n)+', '', c, flags=re.MULTILINE)
+    c = re.sub(r'以下修改建议不直接对应.*?(?=\n\n|\Z)', '', c, flags=re.DOTALL)
+    return c
+
+
 def generate_clean_docx(
     content: str,
     contract_title: str = "合同",
@@ -857,12 +870,15 @@ def generate_clean_docx(
     if not contract_no:
         contract_no = f"{CONTRACT_NO_PREFIX}-{abs(hash(contract_title)) % 10000:04d}"
     
+    # 清洗内容
+    clean_content = _clean_export_content(content)
+    
     doc = Document()
     _setup_docx_default_style(doc)
     _setup_header_footer(doc, contract_title, contract_no)
     
     # 正文 - 无痕迹
-    _render_body(doc, content)
+    _render_body(doc, clean_content)
     
     # 签字盖章
     _add_signature_block(doc)
@@ -1069,12 +1085,12 @@ def generate_pdf_from_docx_args(
 
 def generate_clean_pdf(content: str, contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:
     """生成清洁版 PDF - 无痕迹"""
-    return generate_pdf_from_docx_args(content, contract_title, contract_no, is_modified=False)
+    return generate_pdf_from_docx_args(_clean_export_content(content), contract_title, contract_no, is_modified=False)
 
 
 def generate_original_pdf(content: str, contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:
     """生成原始版 PDF"""
-    return generate_pdf_from_docx_args(content, contract_title, contract_no, is_modified=False)
+    return generate_pdf_from_docx_args(_clean_export_content(content), contract_title, contract_no, is_modified=False)
 
 
 def generate_modified_pdf(content: str, suggestions: List[Dict], contract_title: str = "合同", contract_no: str = "", **kw) -> bytes:

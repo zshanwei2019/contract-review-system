@@ -3,6 +3,7 @@
 根据AI审查发现生成修改建议并支持一键应用
 """
 import json
+import os
 import re
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, asdict
@@ -660,9 +661,9 @@ class ContractModifier:
         "service": "08-service.md",
         "construction": "09-construction.md",
         "labor": "10-labor.md",
-        "other": "11-retirement.md",
+        "other": "11-general.md",
     }
-    _TEMPLATE_DIR = "/opt/contract-review-system/contract_templates"
+    _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "contract_templates")
 
     def _load_template_by_type(self, contract_type: str) -> str:
         """根据合同类型加载模板内容"""
