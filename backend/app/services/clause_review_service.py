@@ -10,6 +10,7 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field, asdict
 
 from app.services.clause_segmenter import segment_clauses, analyze_clause_risks, get_clause_summary
+from app.services.clause_dependency import analyze_clause_dependencies
 from app.services.risk_rules_engine import (
     check_industry_risks, detect_poison_pills, full_risk_analysis,
     INDUSTRY_RISK_RULES, POISON_PILL_PATTERNS
@@ -237,7 +238,15 @@ class ClauseReviewService:
                     "severity": pp["severity"],
                 })
 
-        # Step 5: 生成摘要
+        # Step 5: 条款依赖分析 + 跨条款一致性校验
+        dependency_report = None
+        try:
+            dependency_report = analyze_clause_dependencies(clauses)
+            logger.info(f"依赖分析完成: {dependency_report['summary']['total_issues']} 个一致性问题")
+        except Exception as e:
+            logger.warning(f"依赖分析失败: {e}")
+
+        # Step 6: 生成摘要
         total = len(results)
         high_count = sum(1 for r in results if r.combined_risk_level == "high")
         medium_count = sum(1 for r in results if r.combined_risk_level == "medium")
@@ -256,6 +265,11 @@ class ClauseReviewService:
                 for r in results if r.combined_risk_level == "high"
             ],
         }
+
+        # 合并依赖分析结果
+        if dependency_report:
+            summary["dependency_issues"] = dependency_report["summary"]
+            summary["cross_clause_issues"] = dependency_report["issues"]
 
         return ContractClauseReview(
             contract_id=contract_id or 0,
