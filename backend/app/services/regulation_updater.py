@@ -134,6 +134,103 @@ REGULATION_DB: List[Regulation] = [
         effective_date="2008-01-01",
         keywords=["经济补偿", "N+1", "解除劳动合同", "工作年限"],
     ),
+    # 民法典 - 保证合同
+    Regulation(
+        id="civil-686",
+        name="中华人民共和国民法典",
+        article="第六百八十六条",
+        content="保证的方式包括一般保证和连带责任保证。当事人在保证合同中对保证方式没有约定或者约定不明确的，按照一般保证承担保证责任。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["保证方式", "一般保证", "连带责任保证", "默认一般保证"],
+    ),
+    Regulation(
+        id="civil-692",
+        name="中华人民共和国民法典",
+        article="第六百九十二条",
+        content="保证期间是确定保证人承担保证责任的期间，不发生中止、中断和延长。债权人与保证人可以约定保证期间，但是约定的保证期间早于主债务履行期限或者与主债务履行期限同时届满的，视为没有约定；没有约定或者约定不明确的，保证期间为主债务履行期限届满之日起六个月。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["保证期间", "六个月", "保证责任"],
+    ),
+    # 民法典 - 买卖合同
+    Regulation(
+        id="civil-604",
+        name="中华人民共和国民法典",
+        article="第六百零四条",
+        content="标的物毁损、灭失的风险，在标的物交付之前由出卖人承担，交付之后由买受人承担，但是法律另有规定或者当事人另有约定的除外。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["风险转移", "交付", "标的物毁损"],
+    ),
+    Regulation(
+        id="civil-617",
+        name="中华人民共和国民法典",
+        article="第六百一十七条",
+        content="出卖人交付的标的物不符合质量要求的，买受人可以依据本法第五百八十二条至第五百八十四条的规定请求承担违约责任。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["质量不符", "违约责任", "标的物"],
+    ),
+    # 民法典 - 租赁合同
+    Regulation(
+        id="civil-705",
+        name="中华人民共和国民法典",
+        article="第七百零五条",
+        content="租赁期限不得超过二十年。超过二十年的，超过部分无效。租赁期限届满，当事人可以续订租赁合同；但是，约定的租赁期限自续订之日起不得超过二十年。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["租赁期限", "二十年上限", "续租"],
+    ),
+    Regulation(
+        id="civil-716",
+        name="中华人民共和国民法典",
+        article="第七百一十六条",
+        content="承租人经出租人同意，可以将租赁物转租给第三人。承租人转租的，承租人与出租人之间的租赁合同继续有效；第三人造成租赁物损失的，承租人应当赔偿损失。承租人未经出租人同意转租的，出租人可以解除合同。",
+        category="civil",
+        effective_date="2021-01-01",
+        keywords=["转租", "出租人同意", "合同解除"],
+    ),
+    # 个人信息保护法
+    Regulation(
+        id="pip-13",
+        name="中华人民共和国个人信息保护法",
+        article="第十三条",
+        content="符合下列情形之一的，个人信息处理者方可处理个人信息：（一）取得个人的同意；（二）为订立、履行个人作为一方当事人的合同所必需，或者按照依法制定的劳动规章制度和依法签订的集体合同实施人力资源管理所必需；（三）为履行法定职责或者法定义务所必需；（四）为应对突发公共卫生事件，或者紧急情况下为保护自然人的生命健康和财产安全所必需；（五）为公共利益实施新闻报道、舆论监督等行为，在合理的范围内处理个人信息；（六）依照本法规定在合理的范围内处理个人自行公开或者其他已经合法公开的个人信息；（七）法律、行政法规规定的其他情形。依照本法其他有关规定，处理个人信息应当取得个人同意，但是有前款第二项至第七项规定情形的，不需取得个人同意。",
+        category="commercial",
+        effective_date="2021-11-01",
+        keywords=["个人信息", "同意", "数据处理", "隐私"],
+    ),
+    # 数据安全法
+    Regulation(
+        id="dsl-21",
+        name="中华人民共和国数据安全法",
+        article="第二十一条",
+        content="国家建立数据分类分级保护制度，根据数据在经济社会发展中的重要程度，以及一旦遭到篡改、破坏、泄露或者非法获取、非法利用，对国家安全、公共利益或者个人、组织合法权益造成的危害程度，对数据实行分类分级保护。",
+        category="commercial",
+        effective_date="2021-09-01",
+        keywords=["数据分类分级", "数据安全", "数据保护"],
+    ),
+    # 招标投标法
+    Regulation(
+        id="bid-46",
+        name="中华人民共和国招标投标法",
+        article="第四十六条",
+        content="招标人和中标人应当自中标通知书发出之日起三十日内，按照招标文件和中标人的投标文件订立书面合同。招标人和中标人不得再行订立背离合同实质性内容的其他协议。",
+        category="commercial",
+        effective_date="2000-01-01",
+        keywords=["招标", "中标", "三十日", "实质性内容"],
+    ),
+    # 电子签名法
+    Regulation(
+        id="esign-14",
+        name="中华人民共和国电子签名法",
+        article="第十四条",
+        content="可靠的电子签名与手写签名或者盖章具有同等的法律效力。",
+        category="commercial",
+        effective_date="2005-04-01",
+        keywords=["电子签名", "法律效力", "可靠电子签名"],
+    ),
 ]
 
 
@@ -420,3 +517,191 @@ def assess_regulation_impact(
         "impacts": impacts,
         "checked_regulations": len(updates),
     }
+
+
+# ========== 外部法规API接入框架 ==========
+
+class RegulationAPIClient:
+    """
+    外部法规API客户端基类
+    支持接入: 北大法宝、威科先行、中国裁判文书网等
+    """
+
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        self.api_key = api_key
+        self.base_url = base_url
+        self._cache: Dict[str, Dict] = {}
+
+    async def search(self, query: str, category: Optional[str] = None) -> List[Dict]:
+        """搜索法规 (子类实现)"""
+        raise NotImplementedError
+
+    async def get_article(self, law_id: str, article: str) -> Optional[Dict]:
+        """获取具体条款 (子类实现)"""
+        raise NotImplementedError
+
+    async def get_updates(self, since_date: Optional[str] = None) -> List[Dict]:
+        """获取法规更新 (子类实现)"""
+        raise NotImplementedError
+
+    def _cache_key(self, *args) -> str:
+        return hashlib.md5(json.dumps(args, sort_keys=True).encode()).hexdigest()
+
+
+class BeiDaFaBaoClient(RegulationAPIClient):
+    """
+    北大法宝 API 客户端 (待接入)
+    文档: https://www.pkulaw.com/api
+    """
+
+    DEFAULT_BASE_URL = "https://api.pkulaw.com/v1"
+
+    async def search(self, query: str, category: Optional[str] = None) -> List[Dict]:
+        """
+        搜索北大法宝法规库
+
+        Args:
+            query: 搜索关键词
+            category: 法规分类
+
+        Returns:
+            法规列表
+        """
+        cache_key = self._cache_key("search", query, category)
+        if cache_key in self._cache:
+            return self._cache[cache_key]["results"]
+
+        # TODO: 接入真实API
+        # import aiohttp
+        # async with aiohttp.ClientSession() as session:
+        #     params = {"keyword": query, "token": self.api_key}
+        #     if category:
+        #         params["category"] = category
+        #     async with session.get(f"{self.base_url}/laws/search", params=params) as resp:
+        #         data = await resp.json()
+        #         return data.get("results", [])
+
+        # 降级到本地数据库
+        local_results = search_regulations(query, category)
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "article": r.article,
+                "content": r.content,
+                "category": r.category,
+                "effective_date": r.effective_date,
+                "source": "local_db",
+            }
+            for r in local_results
+        ]
+
+    async def get_article(self, law_id: str, article: str) -> Optional[Dict]:
+        cache_key = self._cache_key("article", law_id, article)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        # 本地查找
+        for reg in REGULATION_DB:
+            if reg.id == law_id or (reg.name in law_id and reg.article == article):
+                return {
+                    "id": reg.id,
+                    "name": reg.name,
+                    "article": reg.article,
+                    "content": reg.content,
+                    "category": reg.category,
+                    "effective_date": reg.effective_date,
+                    "status": reg.status,
+                    "source": "local_db",
+                }
+        return None
+
+    async def get_updates(self, since_date: Optional[str] = None) -> List[Dict]:
+        # TODO: 接入北大法宝法规更新API
+        return get_regulation_updates(since_date)
+
+
+class WeiKeXianXingClient(RegulationAPIClient):
+    """
+    威科先行 API 客户端 (待接入)
+    文档: https://www.wkinfo.com.cn/api
+    """
+
+    DEFAULT_BASE_URL = "https://api.wkinfo.com.cn/v1"
+
+    async def search(self, query: str, category: Optional[str] = None) -> List[Dict]:
+        # 降级到本地数据库
+        local_results = search_regulations(query, category)
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "article": r.article,
+                "content": r.content,
+                "category": r.category,
+                "effective_date": r.effective_date,
+                "source": "local_db",
+            }
+            for r in local_results
+        ]
+
+    async def get_article(self, law_id: str, article: str) -> Optional[Dict]:
+        for reg in REGULATION_DB:
+            if reg.id == law_id or (reg.name in law_id and reg.article == article):
+                return {
+                    "id": reg.id,
+                    "name": reg.name,
+                    "article": reg.article,
+                    "content": reg.content,
+                    "source": "local_db",
+                }
+        return None
+
+    async def get_updates(self, since_date: Optional[str] = None) -> List[Dict]:
+        return get_regulation_updates(since_date)
+
+
+# 全局客户端实例 (可配置切换)
+_regulation_client: Optional[RegulationAPIClient] = None
+
+
+def get_regulation_client(provider: str = "local") -> RegulationAPIClient:
+    """
+    获取法规客户端
+
+    Args:
+        provider: 数据源 (local/beidafabao/weikexianxing)
+
+    Returns:
+        RegulationAPIClient 实例
+    """
+    global _regulation_client
+
+    if provider == "beidafabao":
+        _regulation_client = BeiDaFaBaoClient()
+    elif provider == "weikexianxing":
+        _regulation_client = WeiKeXianXingClient()
+    else:
+        # 默认本地数据库
+        _regulation_client = BeiDaFaBaoClient()  # 本地降级
+
+    return _regulation_client
+
+
+async def search_regulations_async(
+    query: str,
+    category: Optional[str] = None,
+    provider: str = "local",
+) -> List[Dict]:
+    """异步搜索法规 (支持外部API)"""
+    client = get_regulation_client(provider)
+    return await client.search(query, category)
+
+
+async def get_regulation_updates_async(
+    since_date: Optional[str] = None,
+    provider: str = "local",
+) -> List[Dict]:
+    """异步获取法规更新 (支持外部API)"""
+    client = get_regulation_client(provider)
+    return await client.get_updates(since_date)

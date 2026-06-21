@@ -6,6 +6,7 @@
 """
 import logging
 import hashlib
+import json
 import time
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
@@ -425,3 +426,280 @@ def assess_external_risk(company_name: str,
     assessor = ExternalRiskAssessor()
     report = assessor.assess(company_name, internal_risk_score, internal_findings, credit_code)
     return assessor.to_dict(report)
+
+
+# ========== 外部数据API接入框架 ==========
+
+class ExternalDataAPIClient:
+    """
+    外部数据API客户端基类
+    支持接入: 企查查、天眼查、启信宝等
+    """
+
+    def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self._cache: Dict[str, Dict] = {}
+
+    async def get_company_info(self, company_name: str, credit_code: str = "") -> Dict:
+        """获取企业工商信息 (子类实现)"""
+        raise NotImplementedError
+
+    async def get_litigation(self, company_name: str) -> List[Dict]:
+        """获取司法风险 (子类实现)"""
+        raise NotImplementedError
+
+    async def get_risk_indicators(self, company_name: str) -> Dict:
+        """获取风险指标 (子类实现)"""
+        raise NotImplementedError
+
+    def _cache_key(self, *args) -> str:
+        return hashlib.md5(json.dumps(args, sort_keys=True).encode()).hexdigest()
+
+
+class QiChaChaClient(ExternalDataAPIClient):
+    """
+    企查查 API 客户端 (待接入)
+    文档: https://openapi.qcc.com
+    需要: api_key + api_secret
+    """
+
+    DEFAULT_BASE_URL = "https://api.qcc.com"
+
+    async def get_company_info(self, company_name: str, credit_code: str = "") -> Dict:
+        """
+        查询企业工商信息
+
+        Args:
+            company_name: 企业名称
+            credit_code: 统一社会信用代码 (可选)
+
+        Returns:
+            企业信息字典
+        """
+        cache_key = self._cache_key("company_info", company_name, credit_code)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        # TODO: 接入企查查真实API
+        # import aiohttp
+        # import hashlib
+        # timestamp = str(int(time.time()))
+        # sign = hashlib.md5(f"{self.api_key}{timestamp}{self.api_secret}".encode()).hexdigest()
+        # headers = {"Token": self.api_key, "Timespan": timestamp, "Sign": sign}
+        # params = {"keyword": company_name}
+        # if credit_code:
+        #     params["creditCode"] = credit_code
+        # async with aiohttp.ClientSession() as session:
+        #     async with session.get(f"{self.base_url}/Company/GetCompanyDetail",
+        #                            params=params, headers=headers) as resp:
+        #         data = await resp.json()
+        #         return self._parse_company_info(data)
+
+        # 降级到 Mock 数据
+        from app.services.external_data import MockDataSource
+        ds = MockDataSource()
+        info = ds.query_company(company_name, credit_code)
+        result = {
+            "company_name": info.company_name,
+            "credit_code": info.credit_code,
+            "legal_person": info.legal_person,
+            "registered_capital": info.registered_capital,
+            "established_date": info.established_date,
+            "status": info.status,
+            "business_scope": info.business_scope,
+            "abnormal_count": info.abnormal_count,
+            "penalty_count": info.penalty_count,
+            "equity_frozen": info.equity_frozen,
+            "bankruptcy": info.bankruptcy,
+            "risk_level": info.risk_level.value,
+            "risk_summary": info.risk_summary,
+            "source": "mock",
+        }
+        self._cache[cache_key] = result
+        return result
+
+    async def get_litigation(self, company_name: str) -> List[Dict]:
+        cache_key = self._cache_key("litigation", company_name)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        # TODO: 接入企查查司法风险API
+        # async with aiohttp.ClientSession() as session:
+        #     params = {"keyword": company_name, "pageSize": 20}
+        #     async with session.get(f"{self.base_url}/Company/GetJudicialRisk",
+        #                            params=params, headers=headers) as resp:
+        #         data = await resp.json()
+        #         return data.get("records", [])
+
+        from app.services.external_data import MockDataSource
+        ds = MockDataSource()
+        records = ds.query_litigation(company_name)
+        result = [
+            {
+                "case_id": r.case_id,
+                "case_type": r.case_type,
+                "case_title": r.case_title,
+                "role": r.role,
+                "court": r.court,
+                "filing_date": r.filing_date,
+                "amount": r.amount,
+                "outcome": r.outcome,
+                "risk_level": r.risk_level.value,
+                "source": "mock",
+            }
+            for r in records
+        ]
+        self._cache[cache_key] = result
+        return result
+
+    async def get_risk_indicators(self, company_name: str) -> Dict:
+        # TODO: 接入企查查风险扫描API
+        return {
+            "source": "mock",
+            "risk_score": 50,
+            "indicators": [],
+        }
+
+
+class TianYanChaClient(ExternalDataAPIClient):
+    """
+    天眼查 API 客户端 (待接入)
+    文档: https://open.tianyancha.com
+    """
+
+    DEFAULT_BASE_URL = "https://open.api.tianyancha.com"
+
+    async def get_company_info(self, company_name: str, credit_code: str = "") -> Dict:
+        # 降级到 Mock
+        from app.services.external_data import MockDataSource
+        ds = MockDataSource()
+        info = ds.query_company(company_name, credit_code)
+        return {
+            "company_name": info.company_name,
+            "credit_code": info.credit_code,
+            "legal_person": info.legal_person,
+            "registered_capital": info.registered_capital,
+            "established_date": info.established_date,
+            "status": info.status,
+            "business_scope": info.business_scope,
+            "abnormal_count": info.abnormal_count,
+            "penalty_count": info.penalty_count,
+            "equity_frozen": info.equity_frozen,
+            "bankruptcy": info.bankruptcy,
+            "risk_level": info.risk_level.value,
+            "risk_summary": info.risk_summary,
+            "source": "mock",
+        }
+
+    async def get_litigation(self, company_name: str) -> List[Dict]:
+        from app.services.external_data import MockDataSource
+        ds = MockDataSource()
+        records = ds.query_litigation(company_name)
+        return [
+            {
+                "case_id": r.case_id,
+                "case_type": r.case_type,
+                "case_title": r.case_title,
+                "role": r.role,
+                "court": r.court,
+                "filing_date": r.filing_date,
+                "amount": r.amount,
+                "outcome": r.outcome,
+                "risk_level": r.risk_level.value,
+                "source": "mock",
+            }
+            for r in records
+        ]
+
+    async def get_risk_indicators(self, company_name: str) -> Dict:
+        return {"source": "mock", "risk_score": 50, "indicators": []}
+
+
+# 全局客户端实例
+_external_client: Optional[ExternalDataAPIClient] = None
+
+
+def get_external_client(provider: str = "mock") -> ExternalDataAPIClient:
+    """
+    获取外部数据客户端
+
+    Args:
+        provider: 数据源 (mock/qichacha/tianyancha)
+
+    Returns:
+        ExternalDataAPIClient 实例
+    """
+    global _external_client
+
+    if provider == "qichacha":
+        _external_client = QiChaChaClient()
+    elif provider == "tianyancha":
+        _external_client = TianYanChaClient()
+    else:
+        _external_client = QiChaChaClient()  # 默认降级到 mock
+
+    return _external_client
+
+
+async def assess_external_risk_async(
+    company_name: str,
+    internal_risk_score: float = 0.0,
+    provider: str = "mock",
+) -> Dict:
+    """异步外部风险评估 (支持真实API)"""
+    client = get_external_client(provider)
+    company_info = await client.get_company_info(company_name)
+    litigation = await client.get_litigation(company_name)
+
+    # 计算外部风险分
+    external_score = 0
+    if company_info.get("abnormal_count", 0) > 0:
+        external_score += 15
+    if company_info.get("penalty_count", 0) > 0:
+        external_score += 15
+    if company_info.get("equity_frozen"):
+        external_score += 20
+    if company_info.get("bankruptcy"):
+        external_score += 30
+    if company_info.get("risk_level") in ("high", "elevated"):
+        external_score += 20
+
+    total_litigation = len(litigation)
+    if total_litigation > 5:
+        external_score += 20
+    elif total_litigation > 2:
+        external_score += 10
+    elif total_litigation > 0:
+        external_score += 5
+
+    execution_count = sum(1 for l in litigation if l.get("case_type") == "execution")
+    if execution_count > 0:
+        external_score += 15
+
+    external_score = min(external_score, 100)
+
+    # 综合评分: 内部60% + 外部40%
+    combined_score = round(internal_risk_score * 0.6 + external_score * 0.4, 1)
+
+    overall_risk = "low"
+    if combined_score >= 70:
+        overall_risk = "high"
+    elif combined_score >= 40:
+        overall_risk = "medium"
+
+    return {
+        "company_name": company_name,
+        "overall_risk": overall_risk,
+        "risk_score": combined_score,
+        "internal_score": internal_risk_score,
+        "external_score": external_score,
+        "summary": f"综合风险评分{combined_score}分 ({overall_risk})，内部审查{internal_risk_score}分 + 外部数据{external_score}分",
+        "company_info": company_info,
+        "litigation": {
+            "total": total_litigation,
+            "execution": execution_count,
+            "records": litigation[:10],
+        },
+        "data_source": provider,
+    }
