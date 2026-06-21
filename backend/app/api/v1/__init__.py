@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, users, contracts, reviews, workflows, risks, notifications, dashboard, agent, advanced_review
+from app.api.v1 import auth, users, contracts, reviews, workflows, risks, notifications, dashboard, agent, advanced_review, clause_library, contract_templates
 
 api_router = APIRouter()
 
@@ -14,3 +14,5 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["仪表盘"])
 api_router.include_router(agent.router, prefix="/agent", tags=["AI智能体"])
 api_router.include_router(advanced_review.router, tags=["AI高级审查"])
+api_router.include_router(clause_library.router, prefix="/clause-library", tags=["条款库"])
+api_router.include_router(contract_templates.router, prefix="/templates", tags=["合同模板"])

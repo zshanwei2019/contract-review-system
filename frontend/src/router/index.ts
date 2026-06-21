@@ -91,27 +91,32 @@ const routes: RouteRecordRaw[] = [
           },
         ],
       },
-      // 工作流功能暂时隐藏
-      // {
-      //   path: 'workflows',
-      //   name: 'Workflows',
-      //   redirect: '/workflows/instances',
-      //   meta: { title: '工作流', icon: 'Connection' },
-      //   children: [
-      //     {
-      //       path: 'instances',
-      //       name: 'WorkflowInstances',
-      //       component: () => import('@/views/workflows/instances.vue'),
-      //       meta: { title: '流程实例' },
-      //     },
-      //     {
-      //       path: 'definitions',
-      //       name: 'WorkflowDefinitions',
-      //       component: () => import('@/views/workflows/definitions.vue'),
-      //       meta: { title: '流程定义' },
-      //     },
-      //   ],
-      // },
+      {
+        path: 'workflows',
+        name: 'Workflows',
+        redirect: '/workflows/instances',
+        meta: { title: '审批工作流', icon: 'Connection' },
+        children: [
+          {
+            path: 'instances',
+            name: 'WorkflowInstances',
+            component: () => import('@/views/workflows/instances.vue'),
+            meta: { title: '流程实例' },
+          },
+          {
+            path: 'definitions',
+            name: 'WorkflowDefinitions',
+            component: () => import('@/views/workflows/definitions.vue'),
+            meta: { title: '流程定义' },
+          },
+          {
+            path: ':id',
+            name: 'WorkflowDetail',
+            component: () => import('@/views/workflows/detail.vue'),
+            meta: { title: '流程详情', hidden: true },
+          },
+        ],
+      },
       {
         path: 'users',
         name: 'Users',
@@ -123,6 +128,18 @@ const routes: RouteRecordRaw[] = [
         name: 'Notifications',
         component: () => import('@/views/notifications/index.vue'),
         meta: { title: '消息通知', icon: 'Bell', hidden: true },
+      },
+      {
+        path: 'clauses',
+        name: 'ClauseLibrary',
+        component: () => import('@/views/clauses/index.vue'),
+        meta: { title: '条款库', icon: 'Collection' },
+      },
+      {
+        path: 'templates',
+        name: 'ContractTemplates',
+        component: () => import('@/views/templates/index.vue'),
+        meta: { title: '合同模板', icon: 'Files' },
       },
       {
         path: 'agent',

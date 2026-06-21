@@ -84,6 +84,15 @@
             >
               原文对比
             </el-button>
+            <el-button
+              v-if="contract.status === 'reviewed' || contract.status === 'draft'"
+              type="warning"
+              plain
+              icon="Promotion"
+              @click="showApprovalDialog = true"
+            >
+              发起审批
+            </el-button>
           </div>
         </div>
       </template>
@@ -637,6 +646,29 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 发起审批弹窗 -->
+    <el-dialog v-model="showApprovalDialog" title="发起审批流程" width="500px">
+      <el-form label-width="100px">
+        <el-form-item label="合同名称">
+          <span>{{ contract.title }}</span>
+        </el-form-item>
+        <el-form-item label="审批流程">
+          <el-select v-model="selectedWorkflowId" placeholder="选择审批流程" style="width: 100%">
+            <el-option
+              v-for="wf in availableWorkflows"
+              :key="wf.id"
+              :label="wf.name + (wf.contract_type ? ` (${wf.contract_type})` : ' (通用)')"
+              :value="wf.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showApprovalDialog = false">取消</el-button>
+        <el-button type="primary" :loading="launchingApproval" @click="handleLaunchApproval">发起</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -647,6 +679,7 @@ import { contractsApi } from '@/api/contracts'
 import { reviewsApi } from '@/api/reviews'
 import { risksApi } from '@/api/risks'
 import { advancedApi } from '@/api/advanced'
+import { workflowsApi } from '@/api/workflows'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
 import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -670,6 +703,14 @@ const modificationLoading = ref(false)
 const modifiedContent = ref('')
 const showModifiedContent = ref(false)
 const modificationSuggestions = ref<any[]>([])
+
+// 审批工作流
+const showApprovalDialog = ref(false)
+const workflowDefinitions = ref<any[]>([])
+const selectedWorkflowId = ref<number | null>(null)
+const launchingApproval = ref(false)
+
+const availableWorkflows = computed(() => workflowDefinitions.value)
 const selectedSuggestions = ref<number[]>([])
 const showModificationDialog = ref(false)
 const applyingModifications = ref(false)
@@ -1090,8 +1131,40 @@ const renderMarkdown = (text: string) => {
     .replace(/\n/g, '<br>')
 }
 
+// ========== 审批工作流 ==========
+const loadWorkflowDefinitions = async () => {
+  try {
+    workflowDefinitions.value = (await workflowsApi.getDefinitions() as any) || []
+  } catch {
+    workflowDefinitions.value = []
+  }
+}
+
+const handleLaunchApproval = async () => {
+  if (!selectedWorkflowId.value) {
+    ElMessage.warning('请选择审批流程')
+    return
+  }
+  launchingApproval.value = true
+  try {
+    const res = await workflowsApi.createInstance({
+      workflowId: selectedWorkflowId.value,
+      contractId: Number(route.params.id),
+    })
+    ElMessage.success('审批流程已发起')
+    showApprovalDialog.value = false
+    selectedWorkflowId.value = null
+    router.push(`/workflows/${res.id}`)
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || '发起失败')
+  } finally {
+    launchingApproval.value = false
+  }
+}
+
 onMounted(() => {
   fetchContract()
+  loadWorkflowDefinitions()
 })
 </script>
 

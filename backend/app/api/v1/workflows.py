@@ -17,6 +17,7 @@ from app.schemas.workflow import (
     WorkflowInstanceCreate, WorkflowInstanceResponse,
     WorkflowStepResponse, WorkflowActionRequest,
 )
+from sqlalchemy.orm import selectinload
 
 router = APIRouter()
 
@@ -57,6 +58,29 @@ async def create_workflow_definition(
     await db.refresh(definition)
     
     return definition
+
+
+@router.get("/instances", response_model=list[WorkflowInstanceResponse])
+async def list_workflow_instances(
+    contract_id: Optional[int] = None,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取工作流实例列表"""
+    query = (
+        select(WorkflowInstance)
+        .options(selectinload(WorkflowInstance.steps))
+        .order_by(WorkflowInstance.created_at.desc())
+    )
+    if contract_id:
+        query = query.where(WorkflowInstance.contract_id == contract_id)
+    if status:
+        query = query.where(WorkflowInstance.status == InstanceStatus(status))
+    
+    result = await db.execute(query)
+    instances = result.scalars().unique().all()
+    return instances
 
 
 @router.post("/instances", response_model=WorkflowInstanceResponse, status_code=status.HTTP_201_CREATED)

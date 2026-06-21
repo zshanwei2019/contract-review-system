@@ -1,9 +1,43 @@
 <template>
   <div class="contract-list">
+    <!-- 统计概览 -->
+    <el-row :gutter="12" style="margin-bottom: 16px;">
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <el-statistic title="合同总数" :value="stats.total" />
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <el-statistic title="审查中" :value="stats.reviewing" />
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <el-statistic title="待审批" :value="stats.pendingApproval" />
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <el-statistic title="已通过" :value="stats.approved" />
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card stat-risk">
+          <el-statistic title="高风险" :value="stats.highRisk" />
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <el-statistic title="总金额(万元)" :value="stats.totalAmount" :precision="2" />
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>合同列表</span>
+          <span>合同台账</span>
           <div>
             <el-button 
               v-if="selectedIds.length > 0"
@@ -31,10 +65,10 @@
           placeholder="搜索合同名称、编号、甲乙方"
           prefix-icon="Search"
           clearable
-          style="width: 300px"
+          style="width: 280px"
           @keyup.enter="handleSearch"
         />
-        <el-select v-model="searchForm.contract_type" placeholder="合同类型" clearable style="width: 150px">
+        <el-select v-model="searchForm.contract_type" placeholder="合同类型" clearable style="width: 140px">
           <el-option
             v-for="(label, value) in contractTypeLabels"
             :key="value"
@@ -42,7 +76,7 @@
             :value="value"
           />
         </el-select>
-        <el-select v-model="searchForm.status" placeholder="状态" clearable style="width: 150px">
+        <el-select v-model="searchForm.status" placeholder="状态" clearable style="width: 130px">
           <el-option
             v-for="(label, value) in contractStatusLabels"
             :key="value"
@@ -50,6 +84,20 @@
             :value="value"
           />
         </el-select>
+        <el-select v-model="searchForm.risk_level" placeholder="风险等级" clearable style="width: 120px">
+          <el-option label="高风险" value="high" />
+          <el-option label="中风险" value="medium" />
+          <el-option label="低风险" value="low" />
+        </el-select>
+        <el-date-picker
+          v-model="searchForm.dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          style="width: 260px"
+          value-format="YYYY-MM-DD"
+        />
         <el-button type="primary" icon="Search" @click="handleSearch">搜索</el-button>
         <el-button icon="Refresh" @click="handleReset">重置</el-button>
       </div>
@@ -85,7 +133,7 @@
             {{ row.amount ? formatAmount(row.amount) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="risk_level" label="风险等级" width="120">
+        <el-table-column prop="risk_level" label="风险等级" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.risk_level" :type="getRiskColor(row.risk_level)" size="small">
               {{ getRiskLabel(row.risk_level) }}
@@ -93,7 +141,12 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
+        <el-table-column prop="sign_date" label="签订日期" width="120">
+          <template #default="{ row }">
+            {{ row.sign_date ? formatDate(row.sign_date) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="160">
           <template #default="{ row }">
             {{ formatDate(row.created_at) }}
           </template>
@@ -159,6 +212,17 @@ const searchForm = reactive({
   keyword: '',
   contract_type: '',
   status: '',
+  risk_level: '',
+  dateRange: [] as string[],
+})
+
+const stats = reactive({
+  total: 0,
+  reviewing: 0,
+  pendingApproval: 0,
+  approved: 0,
+  highRisk: 0,
+  totalAmount: 0,
 })
 
 const pagination = reactive({
@@ -177,10 +241,23 @@ const fetchContracts = async () => {
     if (searchForm.keyword) params.keyword = searchForm.keyword
     if (searchForm.contract_type) params.contract_type = searchForm.contract_type
     if (searchForm.status) params.status = searchForm.status
+    if (searchForm.risk_level) params.risk_level = searchForm.risk_level
+    if (searchForm.dateRange?.length === 2) {
+      params.start_date = searchForm.dateRange[0]
+      params.end_date = searchForm.dateRange[1]
+    }
     
     const res: any = await contractsApi.list(params)
     contracts.value = res.items || []
     pagination.total = res.total || 0
+    
+    // 更新统计
+    stats.total = res.total || 0
+    stats.reviewing = contracts.value.filter((c: any) => c.status === 'reviewing').length
+    stats.pendingApproval = contracts.value.filter((c: any) => c.status === 'pending_approval').length
+    stats.approved = contracts.value.filter((c: any) => c.status === 'approved').length
+    stats.highRisk = contracts.value.filter((c: any) => c.risk_level === 'high').length
+    stats.totalAmount = contracts.value.reduce((sum: number, c: any) => sum + (c.amount ? Number(c.amount) / 10000 : 0), 0)
   } catch {
     ElMessage.error('获取合同列表失败')
   } finally {
@@ -197,6 +274,8 @@ const handleReset = () => {
   searchForm.keyword = ''
   searchForm.contract_type = ''
   searchForm.status = ''
+  searchForm.risk_level = ''
+  searchForm.dateRange = []
   handleSearch()
 }
 
@@ -285,5 +364,13 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.stat-card {
+  text-align: center;
+}
+
+.stat-risk :deep(.el-statistic__content) {
+  color: #f56c6c;
 }
 </style>

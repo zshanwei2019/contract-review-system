@@ -6,6 +6,8 @@ from app.models.risk import RiskRule, RiskCategory, RiskItem
 from app.models.audit import AuditLog, OperationLog
 from app.models.notification import Notification, NotificationTemplate
 from app.models.memory import ReviewCase, RiskPattern, ContractKnowledge, CorrectionLog, AgentMessage
+from app.models.clause_library import ClauseLibrary, ClauseFavorite
+from app.models.contract_template import ContractTemplate, TemplateStatus
 
 __all__ = [
     "User", "Role", "Permission", "UserRole", "RolePermission",
@@ -16,4 +18,6 @@ __all__ = [
     "AuditLog", "OperationLog",
     "Notification", "NotificationTemplate",
     "ReviewCase", "RiskPattern", "ContractKnowledge", "CorrectionLog", "AgentMessage",
+    "ClauseLibrary", "ClauseFavorite",
+    "ContractTemplate", "TemplateStatus",
 ]
