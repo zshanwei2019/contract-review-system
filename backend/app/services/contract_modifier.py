@@ -182,14 +182,21 @@ class ContractModifier:
                         "messages": [
                             {
                                 "role": "system",
-                                "content": """你是一位专业的法律顾问，擅长合同条款修改。
-请根据审查发现，为每个问题生成具体的修改建议。
+                                "content": """你是一位拥有15年执业经验的资深合同律师，擅长条款级风险分析和修改建议起草。
 
-修改建议应该：
-1. 保持合同的整体结构和意图
-2. 使用专业、准确的法律术语
-3. 降低合同风险，保护委托方利益
-4. 符合中国法律法规
+## 你的工作方式
+
+1. **逐条分析** — 对每个审查发现，定位到具体条款，分析风险根源
+2. **给出修改文本** — 不要说"建议明确XX"，而是直接给出修改后的条款全文
+3. **引用法条** — 每条建议必须附上具体法律依据（精确到条/款）
+4. **风险量化** — 明确不修改会导致什么后果（经济损失/合同无效/争议风险）
+5. **优先级排序** — critical=必须改否则合同有重大风险；high=强烈建议改；medium=建议改；low=可选优化
+
+## 参考信息使用规则
+
+- RAG检索到的历史案例仅作参考，不能直接复制
+- 反例（example_bad）展示常见错误模式，用于识别类似问题
+- 正例（example_good）展示推荐写法，作为修改建议的参考方向
 
 返回JSON格式的修改建议数组。"""
                             },
@@ -251,34 +258,51 @@ class ContractModifier:
             return self._generate_with_rules(contract, findings)
     
     def _build_modification_prompt(self, contract: Contract, findings: List[Dict], rag_blocks: list = None) -> str:
-        """构建修改建议提示词 (含 RAG 检索块)"""
+        """构建修改建议提示词 (含 RAG 检索块 + 反例库)"""
         rag_section = _format_rag_blocks(rag_blocks or [])
-        return f"""请根据以下审查发现，为合同生成修改建议。
+        examples_block = _build_examples_block(findings)
 
-合同信息：
+        return f"""请根据以下审查发现，为合同生成具体的修改建议。
+
+## 合同信息
 - 合同名称：{contract.title}
 - 合同类型：{contract.contract_type.value if contract.contract_type else '未指定'}
 - 甲方：{contract.party_a or '未指定'}
 - 乙方：{contract.party_b or '未指定'}
 - 金额：{contract.amount or '未指定'} {contract.currency or 'CNY'}
 
-审查发现的问题：
+## 审查发现的问题
 {json.dumps(findings, ensure_ascii=False, indent=2)}
 {rag_section}
-请为每个问题生成具体的修改建议，返回JSON格式：
+{examples_block}
+## 输出要求
+
+请为每个问题生成具体的修改建议。注意：
+1. **suggested_text 必须是完整的修改后条款文本**，不是"建议增加..."这种描述
+2. **legal_basis 必须精确到条**，如"《民法典》第五百八十五条第二款"
+3. **reason 要说明风险根源**，不只是"建议修改以降低风险"
+4. **risk_if_not_modified 要描述具体后果**，如"可能导致甲方承担超出实际损失30%的违约金"
+
+返回JSON格式：
 [
   {{
     "finding_id": "审查发现ID",
     "clause": "涉及的条款名称",
-    "original_text": "原始文本（如果是替换类型）",
-    "suggested_text": "建议修改后的文本",
+    "original_text": "原始条款全文",
+    "suggested_text": "修改后的完整条款文本",
     "modification_type": "replace/insert/delete/rewrite",
     "priority": "critical/high/medium/low",
-    "reason": "修改理由",
-    "legal_basis": "法律依据",
-    "risk_if_not_modified": "不修改的风险"
+    "reason": "风险根源分析",
+    "legal_basis": "具体法条引用",
+    "risk_if_not_modified": "不修改的具体后果"
   }}
-]"""
+]
+
+## 反例参考说明
+- example_bad 展示了同类条款的常见错误写法
+- example_good 展示了推荐的安全写法
+- 请参照 example_good 的方向给出 suggested_text
+"""
     
     def _generate_with_rules(
         self,
@@ -825,3 +849,36 @@ class VersionComparer:
 
 # 全局实例
 version_comparer = VersionComparer()
+
+def _build_examples_block(findings: List[Dict]) -> str:
+    """从风险规则引擎构建反例/正例参考块"""
+    try:
+        from app.services.risk_rules_engine import INDUSTRY_RISK_RULES
+    except ImportError:
+        return ""
+
+    examples = []
+    for finding in findings:
+        finding_text = (finding.get("content", "") + " " + finding.get("category", "")).lower()
+        for rule in INDUSTRY_RISK_RULES:
+            rule_name = rule.get("name", "")
+            if rule_name in finding_text or any(kw in finding_text for kw in rule_name.split() if len(kw) > 1):
+                ex = rule.get("example_bad")
+                gx = rule.get("example_good")
+                if ex and gx:
+                    examples.append({
+                        "rule": f"{rule['id']} {rule_name}",
+                        "example_bad": ex,
+                        "example_good": gx,
+                    })
+                    break
+
+    if not examples:
+        return ""
+
+    lines = ["\n## 📖 反例参考 (同类条款常见错误 vs 推荐写法)"]
+    for ex in examples:
+        lines.append(f"\n### {ex['rule']}")
+        lines.append(f"❌ 反例: {ex['example_bad']}")
+        lines.append(f"✅ 正例: {ex['example_good']}")
+    return "\n".join(lines)
