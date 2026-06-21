@@ -11,6 +11,8 @@ from dataclasses import dataclass, field, asdict
 
 from app.services.clause_segmenter import segment_clauses, analyze_clause_risks, get_clause_summary
 from app.services.clause_dependency import analyze_clause_dependencies
+from app.services.obligation_extractor import extract_obligations
+from app.services.playbook_generator import generate_playbook
 from app.services.risk_rules_engine import (
     check_industry_risks, detect_poison_pills, full_risk_analysis,
     INDUSTRY_RISK_RULES, POISON_PILL_PATTERNS
@@ -85,6 +87,8 @@ class ContractClauseReview:
     summary: Dict = field(default_factory=dict)
     ai_calls_made: int = 0  # 实际调 AI 的次数
     ai_calls_saved: int = 0  # 节省的 AI 调用次数
+    obligations: Optional[Dict] = None  # 义务提取结果
+    playbook: Optional[Dict] = None  # 谈判策略
 
 
 class ClauseReviewService:
@@ -271,6 +275,31 @@ class ClauseReviewService:
             summary["dependency_issues"] = dependency_report["summary"]
             summary["cross_clause_issues"] = dependency_report["issues"]
 
+        # Step 7: 义务提取 + 履约跟踪
+        obligations = None
+        try:
+            obligations = extract_obligations(full_text)
+            logger.info(f"义务提取完成: {obligations.get('summary', {}).get('total_obligations', 0)} 条义务")
+        except Exception as e:
+            logger.warning(f"义务提取失败: {e}")
+
+        # Step 8: 谈判策略引擎
+        playbook = None
+        try:
+            findings_for_playbook = []
+            for r in results:
+                for s in r.suggestions:
+                    findings_for_playbook.append({
+                        "clause_title": r.clause_title,
+                        "description": s.get("description", ""),
+                        "severity": s.get("severity", "medium"),
+                        "risk_score": r.combined_risk_score,
+                    })
+            playbook = generate_playbook(findings_for_playbook)
+            logger.info(f"谈判策略生成完成: {playbook.get('summary', {}).get('total_items', 0)} 条策略")
+        except Exception as e:
+            logger.warning(f"谈判策略生成失败: {e}")
+
         return ContractClauseReview(
             contract_id=contract_id or 0,
             total_clauses=total,
@@ -278,6 +307,8 @@ class ClauseReviewService:
             summary=summary,
             ai_calls_made=ai_calls,
             ai_calls_saved=ai_saved,
+            obligations=obligations,
+            playbook=playbook,
         )
 
     async def _ai_review_clause(
@@ -393,6 +424,8 @@ class ClauseReviewService:
             "summary": review.summary,
             "ai_calls_made": review.ai_calls_made,
             "ai_calls_saved": review.ai_calls_saved,
+            "obligations": review.obligations,
+            "playbook": review.playbook,
             "clauses": [
                 {
                     "clause_index": c.clause_index,
