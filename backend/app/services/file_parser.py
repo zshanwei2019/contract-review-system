@@ -173,7 +173,47 @@ def _extract_pdf(file_path: str, max_length: int) -> str:
 
 
 def _extract_word(file_path: str, max_length: int) -> str:
-    """提取Word文档内容"""
+    """提取Word文档内容 (.docx / .doc)"""
+    ext = os.path.splitext(file_path)[1].lower()
+
+    # .doc 旧格式: 用 textutil (macOS) 或 antiword (Linux) 转换
+    if ext == '.doc':
+        import subprocess
+        import tempfile
+        try:
+            # macOS textutil
+            result = subprocess.run(
+                ['textutil', '-convert', 'txt', '-stdout', file_path],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout[:max_length]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        try:
+            # Linux antiword
+            result = subprocess.run(
+                ['antiword', file_path],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout[:max_length]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        try:
+            # Linux catdoc
+            result = subprocess.run(
+                ['catdoc', file_path],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout[:max_length]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        logger.error(f"无法解析 .doc 文件 (需要 textutil/antiword/catdoc): {file_path}")
+        return None
+
+    # .docx 新格式
     try:
         import docx
         doc = docx.Document(file_path)

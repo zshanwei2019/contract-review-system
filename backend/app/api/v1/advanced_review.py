@@ -216,6 +216,17 @@ async def get_contract_obligations(
             full_text = await extract_text_from_file(fp)
 
     if not full_text:
+        # 尝试从合同字段构建文本
+        parts = [contract.title or ""]
+        if contract.description:
+            parts.append(contract.description)
+        if contract.key_terms:
+            parts.append(contract.key_terms)
+        if contract.special_terms:
+            parts.append(contract.special_terms)
+        full_text = "\n\n".join(parts)
+
+    if not full_text.strip():
         raise HTTPException(status_code=400, detail="合同内容为空")
 
     # 先分段
@@ -372,6 +383,17 @@ async def compliance_check_by_contract(
             full_text = await extract_text_from_file(fp)
 
     if not full_text:
+        # 尝试从合同字段构建文本
+        parts = [contract.title or ""]
+        if contract.description:
+            parts.append(contract.description)
+        if contract.key_terms:
+            parts.append(contract.key_terms)
+        if contract.special_terms:
+            parts.append(contract.special_terms)
+        full_text = "\n\n".join(parts)
+
+    if not full_text.strip():
         raise HTTPException(status_code=400, detail="合同内容为空")
 
     ct = contract.contract_type.value if contract.contract_type else "other"

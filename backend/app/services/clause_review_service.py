@@ -278,7 +278,7 @@ class ClauseReviewService:
         # Step 7: 义务提取 + 履约跟踪
         obligations = None
         try:
-            obligations = extract_obligations(full_text)
+            obligations = extract_obligations(clauses)
             logger.info(f"义务提取完成: {obligations.get('summary', {}).get('total_obligations', 0)} 条义务")
         except Exception as e:
             logger.warning(f"义务提取失败: {e}")
