@@ -142,6 +142,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '合同模板', icon: 'Files' },
       },
       {
+        path: 'signature',
+        name: 'Signature',
+        component: () => import('@/views/signature/index.vue'),
+        meta: { title: '电子签章', icon: 'Stamp' },
+      },
+      {
+        path: 'integration',
+        name: 'Integration',
+        component: () => import('@/views/integration/index.vue'),
+        meta: { title: '外部集成', icon: 'Connection' },
+      },
+      {
         path: 'audit',
         name: 'AuditLogs',
         component: () => import('@/views/audit/index.vue'),

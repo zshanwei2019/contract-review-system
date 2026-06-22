@@ -8,6 +8,8 @@ from app.models.notification import Notification, NotificationTemplate
 from app.models.memory import ReviewCase, RiskPattern, ContractKnowledge, CorrectionLog, AgentMessage
 from app.models.clause_library import ClauseLibrary, ClauseFavorite
 from app.models.contract_template import ContractTemplate, TemplateStatus
+from app.models.signature import SignatureRequest, Seal, SignatureLog
+from app.models.integration import IntegrationConfig, WebhookEvent, SyncLog
 
 __all__ = [
     "User", "Role", "Permission", "UserRole", "RolePermission",
@@ -20,4 +22,6 @@ __all__ = [
     "ReviewCase", "RiskPattern", "ContractKnowledge", "CorrectionLog", "AgentMessage",
     "ClauseLibrary", "ClauseFavorite",
     "ContractTemplate", "TemplateStatus",
+    "SignatureRequest", "Seal", "SignatureLog",
+    "IntegrationConfig", "WebhookEvent", "SyncLog",
 ]
