@@ -775,7 +775,9 @@ async def export_modified_contract(
     import os, hashlib
     cache_dir = f"/tmp/contract_export_cache"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_key = hashlib.md5(f"{contract_id}_{review_task.id if review_task else 0}_{len(suggestions)}".encode()).hexdigest()
+    # 缓存 key 包含合同更新时间 + 审查任务ID + 建议数量, 确保内容变化后重新生成
+    contract_updated = contract.updated_at.isoformat() if hasattr(contract, 'updated_at') and contract.updated_at else ''
+    cache_key = hashlib.md5(f"{contract_id}_{review_task.id if review_task else 0}_{len(suggestions)}_{contract_updated}".encode()).hexdigest()
     cache_file = f"{cache_dir}/{cache_key}.md"
     
     # AI 改写后的内容 (含开场白, 需清洗)

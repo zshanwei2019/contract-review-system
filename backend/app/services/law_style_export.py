@@ -57,8 +57,20 @@ def _risk_color(level: str) -> Tuple[int, int, int]:
 
 
 def _detect_clause_level(text: str) -> Tuple[int, str]:
-    """判断条款层级: 0=合同标题 1=第X条 2=一、 3=(一) 4=1. 5=(1) 9=正文"""
+    """判断条款层级: 0=合同标题 1=第X条 2=一、 3=(一) 4=1. 5=(1) 9=正文
+    也支持 Markdown 标题: # → 0, ## → 1, ### → 2, #### → 3
+    """
     t = text.strip()
+    # Markdown 标题 (优先检测, 不去掉 # 前缀)
+    if re.match(r'^#{1}\s+', t):
+        return 0, re.sub(r'^#\s+', '', t)
+    if re.match(r'^#{2}\s+', t):
+        return 1, re.sub(r'^#{2}\s+', '', t)
+    if re.match(r'^#{3}\s+', t):
+        return 2, re.sub(r'^#{3}\s+', '', t)
+    if re.match(r'^#{4,6}\s+', t):
+        return 3, re.sub(r'^#{4,6}\s+', '', t)
+    # 中文合同条款
     if re.match(r'^第[一二三四五六七八九十百零〇\d]+条', t):
         return 1, t
     if re.match(r'^[一二三四五六七八九十]+、', t):
@@ -430,7 +442,7 @@ def _add_toc_page(doc, sections: List[str]):
 # ============== 正文渲染 ==============
 
 def _render_body(doc, text: str):
-    """渲染合同正文 - 智能识别层级"""
+    """渲染合同正文 - 智能识别层级 (支持 Markdown 标题和中文条款编号)"""
     lines = text.split('\n')
     current_level = 9
     for line in lines:
@@ -438,8 +450,7 @@ def _render_body(doc, text: str):
         if not s:
             _add_blank(doc, 1)
             continue
-        # 跳过 markdown 痕迹
-        s = re.sub(r'^#+\s*', '', s)
+        # 只去掉 markdown 加粗/代码标记, 保留 # 标题前缀给 _detect_clause_level 识别
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
         level, cleaned = _detect_clause_level(s)
@@ -741,9 +752,8 @@ def generate_modified_docx(
                 cur_sug_text = None
             _add_blank(doc, 1)
             continue
-        s = re.sub(r'^#+\s*', '', s)
-        s_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
-        s_clean = re.sub(r'`([^`]+)`', r'\1', s_clean)
+        s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
+        s_clean = re.sub(r'`([^`]+)`', r'\1', s)
         is_modified_clause = '[已修改]' in s_clean
         s_clean = s_clean.replace(' [已修改]', '').replace('[已修改]', '').strip()
         level, cleaned = _detect_clause_level(s_clean)
@@ -1056,7 +1066,6 @@ def generate_pdf_from_docx_args(
                 cur_sug = None
             story.append(Spacer(1, 0.5 * cm))
             continue
-        s = re.sub(r'^#+\s*', '', s)
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
         is_mod = '[已修改]' in s
