@@ -813,6 +813,9 @@ async def export_modified_contract(
             text = text.split('***', 1)[1].strip()
         # 也去掉可能残留的结尾废话
         text = re.sub(r'^(好的，|我将根据|根据您提供|为您生成).*?\n', '', text)
+        # 去掉 markdown 代码块标记
+        text = re.sub(r'^```(?:markdown)?\s*\n?', '', text)
+        text = re.sub(r'\n?```\s*$', '', text)
         return text.strip()
     
     modified_content = _clean_ai_output(ai_content)

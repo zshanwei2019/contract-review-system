@@ -171,7 +171,7 @@ class ContractModifier:
         prompt = self._build_modification_prompt(contract, findings, rag_blocks)
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:  # 30秒超时
+            async with httpx.AsyncClient(timeout=120.0) as client:  # 120秒超时 (生成修改建议)
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
@@ -207,7 +207,7 @@ class ContractModifier:
                             }
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 4000
+                        "max_tokens": 8000
                     }
                 )
                 
@@ -221,7 +221,18 @@ class ContractModifier:
                 # 提取JSON部分
                 json_match = re.search(r'\[.*\]', content, re.DOTALL)
                 if json_match:
-                    suggestions_data = json.loads(json_match.group())
+                    json_str = json_match.group()
+                    try:
+                        suggestions_data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        # JSON 可能被截断，尝试补全
+                        # 找最后一个完整的对象
+                        last_brace = json_str.rfind('}')
+                        if last_brace > 0:
+                            json_str = json_str[:last_brace+1] + ']'
+                            suggestions_data = json.loads(json_str)
+                        else:
+                            raise
                 else:
                     # 尝试清理内容后再解析
                     clean_content = content.strip()
@@ -252,7 +263,7 @@ class ContractModifier:
             except json.JSONDecodeError:
                 return self._generate_with_rules(contract, findings)
         except httpx.ReadTimeout:
-            print("AI API调用超时，使用规则引擎生成修改建议")
+            print("AI API调用超时 (120s)，使用规则引擎生成修改建议")
             return self._generate_with_rules(contract, findings)
         except Exception as e:
             print(f"AI API调用失败: {str(e)}")
@@ -323,7 +334,18 @@ class ContractModifier:
             
             # 根据问题类型生成修改建议
             modification_type = ModificationType.REPLACE
-            suggested_text = suggestion if suggestion else self._generate_default_suggestion(category, content)
+            # 优先使用审查意见中的 suggestion（它是具体修改建议）
+            # 但如果 suggestion 是描述性语言（如"将该款修改为：..."），则提取冒号后的内容
+            if suggestion and len(suggestion) > 20:
+                # 尝试提取 "修改为：XXX" 中的实际条款文本
+                import re as _re
+                m = _re.search(r'修改为[：:\s]*[\'\'""]?(.+?)[\'\'""]?$', suggestion, _re.DOTALL)
+                if m:
+                    suggested_text = m.group(1).strip()
+                else:
+                    suggested_text = suggestion
+            else:
+                suggested_text = self._generate_default_suggestion(category, content)
             
             # 确定优先级
             if risk_level == "critical":
@@ -356,18 +378,39 @@ class ContractModifier:
         """生成默认修改建议 - 返回实际条款文本"""
         suggestions_map = {
             "违约责任": "任何一方违反本合同约定的，应承担违约责任。违约方应向守约方支付违约金，违约金按合同总金额的万分之五/日计算；违约金不足以弥补守约方损失的，违约方还应赔偿守约方的实际损失。赔偿范围包括但不限于直接损失、预期利益损失、律师费、诉讼费等合理费用。",
+            "违约": "任何一方违反本合同约定的，应承担违约责任。违约方应向守约方支付违约金，违约金按合同总金额的万分之五/日计算；违约金不足以弥补守约方损失的，违约方还应赔偿守约方的实际损失。赔偿范围包括但不限于直接损失、预期利益损失、律师费、诉讼费等合理费用。",
             "付款条件": "甲方应在收到乙方开具的合规发票后【30】个工作日内支付款项。甲方以银行转账方式将款项支付至乙方指定账户。乙方应在付款前向甲方提供等额、合法、有效的增值税专用发票。如甲方逾期付款，应按未付金额的万分之三/日向乙方支付违约金。",
+            "价款支付": "甲方应按约定的支付方式和期限向乙方支付款项。甲方以银行转账方式将款项支付至乙方指定账户。乙方应在付款前向甲方提供等额、合法、有效的发票。如甲方逾期付款，应按未付金额的万分之三/日向乙方支付违约金。",
             "交付条款": "乙方应于【日期】前将符合合同约定的标的物交付至甲方指定地点。交付前标的物的毁损、灭失风险由乙方承担，交付后由甲方承担。甲方应在收到标的物后【7】个工作日内完成验收，验收不合格的，乙方应在【15】个工作日内免费更换或修复。",
             "知识产权": "本合同履行过程中产生的新知识产权（前景知识产权）归甲方所有。双方各自原有的知识产权（背景知识产权）仍归各自所有。乙方不得将甲方的技术资料、商业信息用于本合同之外的任何目的。未经甲方书面同意，乙方不得将相关知识产权转让或授权给第三方。",
             "保密条款": "双方对在本合同履行过程中获知的对方商业秘密、技术秘密及其他保密信息承担保密义务。保密期限为合同终止后【3】年。保密信息不包括：已公开的信息、合法渠道获得的信息、法律要求披露的信息。违反保密义务的一方应赔偿对方因此遭受的全部损失。",
+            "保密": "双方对在本合同履行过程中获知的对方商业秘密、技术秘密及其他保密信息承担保密义务。保密期限为合同终止后【3】年。保密信息不包括：已公开的信息、合法渠道获得的信息、法律要求披露的信息。违反保密义务的一方应赔偿对方因此遭受的全部损失。",
             "争议解决": "因本合同引起的或与本合同有关的任何争议，双方应首先通过友好协商解决；协商不成的，任何一方均有权向甲方所在地有管辖权的人民法院提起诉讼。争议解决期间，合同的继续履行部分不受影响。",
+            "争议": "因本合同引起的或与本合同有关的任何争议，双方应首先通过友好协商解决；协商不成的，任何一方均有权向甲方所在地有管辖权的人民法院提起诉讼。争议解决期间，合同的继续履行部分不受影响。",
             "合同期限": "本合同自双方签字盖章之日起生效，有效期至【日期】止。合同到期前【30】日，双方可协商续约。任何一方需提前终止合同的，应提前【30】日书面通知对方，并承担相应的违约责任。",
             "质量标准": "标的物应符合国家相关质量标准及合同约定的技术规格。乙方提供的产品/服务质量保证期为【12】个月，自验收合格之日起算。保证期内出现质量问题的，乙方应免费维修或更换。",
+            "质量": "标的物应符合国家相关质量标准及合同约定的技术规格。乙方提供的产品/服务质量保证期为【12】个月，自验收合格之日起算。保证期内出现质量问题的，乙方应免费维修或更换。",
             "不可抗力": "因不可抗力导致一方不能履行合同义务的，应在不可抗力发生后【15】日内书面通知对方，并提供相关证明文件。不可抗力持续超过【30】日的，任何一方有权解除合同。不可抗力包括但不限于自然灾害、战争、政府行为、疫情等。",
+            "合同主体": "双方确认，本合同主体信息如下：甲方为依法成立并存续的企业法人，具备签署和履行本合同的资格和能力。乙方为具备完全民事行为能力的自然人/依法成立并存续的法人或其他组织。双方保证其代表已获得充分授权签署本合同。",
         }
         for key, suggestion in suggestions_map.items():
             if key in category:
                 return suggestion
+        # 根据内容关键词推断
+        if "歧视" in content or "遗传" in content:
+            return "乙方保证其身体健康状况能够胜任本协议约定的岗位工作，如因自身健康原因无法继续履行协议，应按照本协议规定提前通知甲方。甲方不得以与履行岗位无关的健康信息作为歧视依据。"
+        if "竞业" in content or "兼职" in content:
+            return "乙方受聘期间不得自营或为他人经营与甲方同类或类似的业务。若乙方违反此项义务，所得收益归甲方所有，并应赔偿甲方因此遭受的实际损失。"
+        if "单方" in content and ("调整" in content or "修改" in content):
+            return "任何对本合同条款的修改或补充，须经双方书面协商一致，并签订书面补充协议。补充协议与本合同具有同等法律效力。"
+        if "试用期" in content:
+            return "本协议不设试用期。乙方自协议生效之日起即按约定岗位履行职责。"
+        if "规章" in content and "制度" in content:
+            return "乙方应遵守甲方已向乙方公示或书面告知的规章制度，规章制度的变更或新增须经乙方签收确认后对其发生效力。甲方规章制度如与本协议抵触，以本协议为准。"
+        if "解除" in content or "终止" in content:
+            return "乙方严重违反甲方规章制度，给甲方造成重大损害的（重大损害标准以附件形式明确），甲方可以解除本协议。甲方应在解除前书面通知乙方并说明理由。"
+        if "法律" in content and ("废止" in content or "民法通则" in content or "合同法" in content):
+            return "根据《中华人民共和国民法典》及相关法律规定，甲乙双方经平等协商一致，自愿签订本协议，共同遵守本协议所列条款。"
         return "建议修改此条款以降低合同风险，明确双方权利义务，保护委托方合法权益。"
 
     def _generate_reason(self, category: str, content: str) -> str:
@@ -473,8 +516,24 @@ class ContractModifier:
         if not suggestions_to_apply:
             raise ValueError("没有找到要应用的修改建议")
         
-        # 使用AI重写合同内容
-        modified_content = await self.rewrite_contract_with_ai(contract, suggestions_to_apply)
+        # P0: 提取原始合同文本，让AI基于原文改写而非凭空生成
+        orig_content = ""
+        if contract.file_path:
+            import os as _os
+            if _os.path.exists(contract.file_path):
+                try:
+                    from app.services.file_parser import extract_text_from_file
+                    orig_content = await extract_text_from_file(contract.file_path)
+                except Exception as e:
+                    print(f"提取合同原文失败: {e}")
+        # 如果文件解析失败，用 description 作为兜底
+        if not orig_content or len(orig_content) < 100:
+            orig_content = contract.description or ""
+
+        # 使用AI重写合同内容 (传入原文，走改写模式)
+        modified_content = await self.rewrite_contract_with_ai(
+            contract, suggestions_to_apply, original_content=orig_content
+        )
         
         # 生成修改摘要
         modification_summary = []
@@ -603,7 +662,7 @@ class ContractModifier:
 请直接输出完整的合同文档内容："""
         
         try:
-            timeout_val = 120.0 if has_original else 60.0
+            timeout_val = 180.0 if has_original else 90.0
             max_tokens_val = 16000 if has_original else 8000
             async with httpx.AsyncClient(timeout=timeout_val) as client:
                 response = await client.post(

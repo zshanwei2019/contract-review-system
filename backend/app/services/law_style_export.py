@@ -796,8 +796,51 @@ def generate_modified_docx(
     if in_mod and cur_sug_text:
         _add_para(doc, f"【修改说明】{cur_sug_text}", level=9, color=BLUE)
     
-    # 4) 未匹配的意见 - 在末尾集中说明
-    unmatched = [s for i, s in enumerate(suggestions) if i not in matched_indices]
+    # 4) 未匹配的意见 - 智能匹配或集中说明
+    # 如果 AI 已经将修改融入正文 (没有 [已修改] 标记), 则用关键词匹配
+    # 如果仍无法匹配且正文已包含建议内容, 则跳过 (说明已融入)
+    import unicodedata as _uc
+    def _normalize_text(t):
+        """标准化文本: 去掉引号、空格等差异"""
+        if not t:
+            return ''
+        t = t.replace('\u2018', '').replace('\u2019', '')  # 去掉弯引号
+        t = t.replace('\u201c', '').replace('\u201d', '')  # 去掉弯双引号
+        t = t.replace("'", '').replace('"', '')  # 去掉直引号
+        t = t.replace('\u3000', ' ').replace('\xa0', ' ')  # 全角空格
+        t = re.sub(r'[\s\u3000\xa0]+', '', t)  # 去所有空格
+        t = t.strip('\u3002\uff0c\uff1b\uff1a')  # 去结尾标点
+        return t.strip()
+    
+    norm_content = _normalize_text(content)
+    has_modification_markers = '[已修改]' in content
+    unmatched = []
+    for i, sug in enumerate(suggestions):
+        if i in matched_indices:
+            continue
+        # 如果没有 [已修改] 标记, 说明 AI 直接融入了修改, 检查建议是否已在正文中
+        if not has_modification_markers:
+            sug_text = (sug.get('suggested_text') or sug.get('suggestion') or '').strip()
+            if sug_text and len(sug_text) > 5:
+                # 标准化后取前30个字符匹配
+                norm_sug = _normalize_text(sug_text[:30])
+                if norm_sug and norm_sug in norm_content:
+                    matched_indices.add(i)
+                    continue
+        unmatched.append(sug)
+    
+    if not has_modification_markers:
+        # AI 直接融入模式: 再检查剩余 unmatched
+        truly_unmatched = []
+        for sug in unmatched:
+            sug_text = (sug.get('suggested_text') or sug.get('suggestion') or '').strip()
+            if sug_text and len(sug_text) > 5:
+                norm_sug = _normalize_text(sug_text[:30])
+                if norm_sug and norm_sug in norm_content:
+                    continue  # 已融入正文
+            truly_unmatched.append(sug)
+        unmatched = truly_unmatched
+    
     if unmatched:
         doc.add_page_break()
         _add_para(doc, "其 他 修 改 建 议", level=0, align='center', first_line_indent=False)
