@@ -39,8 +39,10 @@ class IntegrationConfigUpdate(BaseModel):
     api_url: Optional[str] = None
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
+    auth_type: Optional[str] = None
     sync_enabled: Optional[bool] = None
     sync_interval: Optional[int] = None
+    sync_direction: Optional[str] = None
     is_active: Optional[bool] = None
     field_mapping: Optional[dict] = None
 

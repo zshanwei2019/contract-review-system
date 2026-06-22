@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import select
 from typing import AsyncGenerator
+import logging
 
 from app.core.config import settings
 
@@ -39,3 +41,68 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _seed_data()
+
+
+async def _seed_data():
+    """Insert seed data for seals and integration configs if tables are empty."""
+    from app.models.signature import Seal
+    from app.models.integration import IntegrationConfig
+
+    async with async_session_factory() as session:
+        # Seed seals
+        result = await session.execute(select(Seal).limit(1))
+        if result.scalars().first() is None:
+            session.add_all([
+                Seal(
+                    name="公司公章",
+                    seal_type="official",
+                    image_url="/seals/official.png",
+                    certificate_sn="CERT-SEAL-001",
+                    is_active=True,
+                ),
+                Seal(
+                    name="合同专用章",
+                    seal_type="contract",
+                    image_url="/seals/contract.png",
+                    certificate_sn="CERT-SEAL-002",
+                    is_active=True,
+                ),
+                Seal(
+                    name="财务专用章",
+                    seal_type="finance",
+                    image_url="/seals/finance.png",
+                    certificate_sn="CERT-SEAL-003",
+                    is_active=True,
+                ),
+            ])
+            logging.info("Seeded 3 seals")
+
+        # Seed integration configs
+        result = await session.execute(select(IntegrationConfig).limit(1))
+        if result.scalars().first() is None:
+            session.add_all([
+                IntegrationConfig(
+                    name="OA协同办公系统",
+                    system_type="oa",
+                    api_url="https://oa.example.com/api/v1",
+                    auth_type="bearer",
+                    sync_enabled=False,
+                    sync_interval=300,
+                    sync_direction="bidirectional",
+                    is_active=True,
+                ),
+                IntegrationConfig(
+                    name="ERP企业资源系统",
+                    system_type="erp",
+                    api_url="https://erp.example.com/api",
+                    auth_type="api_key",
+                    sync_enabled=False,
+                    sync_interval=600,
+                    sync_direction="inbound",
+                    is_active=True,
+                ),
+            ])
+            logging.info("Seeded 2 integration configs")
+
+        await session.commit()

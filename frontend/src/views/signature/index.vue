@@ -90,8 +90,10 @@
     <!-- 发起签章弹窗 -->
     <el-dialog v-model="showCreate" title="发起签章请求" width="500px">
       <el-form :model="createForm" label-width="100px">
-        <el-form-item label="合同ID" required>
-          <el-input-number v-model="createForm.contract_id" :min="1" style="width: 100%" />
+        <el-form-item label="选择合同" required>
+          <el-select v-model="createForm.contract_id" placeholder="选择合同" filterable style="width: 100%">
+            <el-option v-for="c in contracts" :key="c.id" :label="`#${c.id} ${c.title}`" :value="c.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="签署人" required>
           <el-input v-model="createForm.signer_name" placeholder="签署人姓名" />
@@ -175,6 +177,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { signatureApi } from '@/api/signature'
+import { contractsApi } from '@/api/contracts'
 
 const activeTab = ref('requests')
 const loading = ref(false)
@@ -185,6 +188,7 @@ const filter = reactive({ signer_name: '', status: '' })
 
 const sealLoading = ref(false)
 const seals = ref<any[]>([])
+const contracts = ref<any[]>([])
 
 const showCreate = ref(false)
 const createForm = reactive<any>({
@@ -231,6 +235,13 @@ async function loadRequests() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadContracts() {
+  try {
+    const res = await contractsApi.list({ page: 1, page_size: 100 })
+    contracts.value = res.data?.items || res.data || []
+  } catch {}
 }
 
 async function loadSeals() {
@@ -312,6 +323,7 @@ async function handleDeleteSeal(id: number) {
 onMounted(() => {
   loadRequests()
   loadSeals()
+  loadContracts()
 })
 </script>
 

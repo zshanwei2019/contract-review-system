@@ -10,6 +10,8 @@ class SealResponse(BaseModel):
     image_url: str
     is_active: bool
     certificate_sn: Optional[str] = None
+    certificate_expiry: Optional[datetime] = None
+    owner_id: Optional[int] = None
     created_at: datetime
     class Config:
         from_attributes = True
@@ -36,6 +38,7 @@ class SignatureRequestResponse(BaseModel):
     signed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     certificate_sn: Optional[str] = None
+    certificate_issuer: Optional[str] = None
     hash_value: Optional[str] = None
     remark: Optional[str] = None
     created_at: datetime
