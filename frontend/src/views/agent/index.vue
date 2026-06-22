@@ -216,8 +216,8 @@ const learningRate = computed(() => {
 const ragByType = (type: string) => ragStats.value.by_source?.find((s: any) => s.source_type === type)?.count || 0
 const sourceLabel = (type: string) => ({ review_opinion: '审查意见', knowledge: '法律知识', correction: '人工修正' }[type] || type)
 const riskLabel = (level: string) => ({ high: '高风险', medium: '中风险', low: '低风险', info: '提示' }[level] || level)
-const riskTagType = (level: string) => ({ high: 'danger', medium: 'warning', low: 'info', info: 'info' }[level] || 'info')
-const similarityTagType = (sim: number) => sim >= 0.8 ? 'success' : sim >= 0.65 ? 'warning' : 'info'
+const riskTagType = (level: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' => ({ high: 'danger', medium: 'warning', low: 'info', info: 'info' } as const)[level] || 'info'
+const similarityTagType = (sim: number): 'primary' | 'success' | 'warning' | 'info' | 'danger' => sim >= 0.8 ? 'success' : sim >= 0.65 ? 'warning' : 'info'
 
 const refreshAlerts = async () => { try { alerts.value = await agentApi.getMonitoringAlerts() as any } catch { ElMessage.error('获取监控数据失败') } }
 const loadAgents = async () => { try { const res: any = await agentApi.listAgents(); agents.value = res.agents || [] } catch {} }

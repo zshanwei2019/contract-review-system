@@ -350,7 +350,7 @@
                   v-for="(s, i) in playbookData.strategies"
                   :key="i"
                   :color="stanceColors[s.stance] || '#909399'"
-                  :timestamp="`第${i+1}步`"
+                  :timestamp="`第${Number(i)+1}步`"
                 >
                   <el-card shadow="hover">
                     <template #header>
@@ -683,6 +683,7 @@ import { workflowsApi } from '@/api/workflows'
 import { contractTypeLabels, contractStatusLabels, contractStatusColors } from '@/types/contract'
 import type { ContractType, ContractStatus } from '@/types/contract'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { agentApi } from '@/api/agent'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -741,7 +742,7 @@ const stanceLabels: Record<string, string> = {
   INSIST: '必须坚持', PUSH_BACK: '坚决反对', NEGOTIATE: '重点谈判',
   COMPROMISE: '可妥协', ACCEPT: '可接受',
 }
-const stanceTagTypes: Record<string, string> = {
+const stanceTagTypes: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
   INSIST: 'danger', PUSH_BACK: 'danger', NEGOTIATE: 'warning',
   COMPROMISE: 'info', ACCEPT: 'success',
 }
@@ -752,7 +753,7 @@ const stanceColors: Record<string, string> = {
 const riskTierLabels: Record<string, string> = {
   LOW: '低风险', MODERATE: '中等风险', ELEVATED: '较高风险', HIGH: '高风险', UNKNOWN: '未知',
 }
-const riskTierColors: Record<string, string> = {
+const riskTierColors: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
   LOW: 'success', MODERATE: 'info', ELEVATED: 'warning', HIGH: 'danger', UNKNOWN: 'info',
 }
 
@@ -831,8 +832,8 @@ const fetchContract = async () => {
       reviewsApi.list({ contract_id: contractId.value }),
       contractsApi.getVersions(contractId.value),
     ])
-    reviews.value = reviewsRes.items || []
-    versions.value = versionsRes || []
+    reviews.value = (reviewsRes as any)?.items || (reviewsRes as any) || []
+    versions.value = (versionsRes as any) || []
     // 获取风险量化汇总
     try {
       riskSummary.value = await risksApi.getContractRiskSummary(contractId.value)
@@ -968,7 +969,7 @@ const handleApplyModifications = async () => {
   
   applyingModifications.value = true
   try {
-    const result: any = await contractsApi.applyModifications(contractId.value, selectedSuggestions.value)
+    const result: any = await contractsApi.applyModifications(contractId.value, selectedSuggestions.value.map(String))
     ElMessage.success(result.message)
     showModificationDialog.value = false
     
@@ -989,7 +990,7 @@ const handleExportModified = async (cmd: string) => {
   // cmd 格式: "word-modified" | "pdf-clean" | "markdown-modified" 等
   const [format, version] = cmd.split('-')
   try {
-    const response: any = await contractsApi.exportModifiedContract(contractId.value, format, version)
+    const response: any = await contractsApi.exportModifiedContract(contractId.value, format as 'word' | 'pdf' | 'markdown', version as 'modified' | 'clean' | 'original')
     
     // 从 Content-Disposition header 解析文件名
     const cd = response.headers?.['content-disposition'] || ''
@@ -1047,8 +1048,8 @@ const exportCompare = async (format: 'word' | 'markdown') => {
   if (!compareData.value?.has_modifications) return
   
   try {
-    const blob = await contractsApi.exportModifiedContract(contractId.value, format)
-    const url = window.URL.createObjectURL(blob)
+    const blob = await contractsApi.exportModifiedContract(contractId.value, format as 'word' | 'pdf' | 'markdown')
+    const url = window.URL.createObjectURL(blob.data)
     const link = document.createElement('a')
     link.href = url
     link.download = `合同对比_${contract.value?.title || 'export'}.${format === 'word' ? 'docx' : 'md'}`
@@ -1147,14 +1148,14 @@ const handleLaunchApproval = async () => {
   }
   launchingApproval.value = true
   try {
-    const res = await workflowsApi.createInstance({
+    const res: any = await workflowsApi.createInstance({
       workflowId: selectedWorkflowId.value,
       contractId: Number(route.params.id),
     })
     ElMessage.success('审批流程已发起')
     showApprovalDialog.value = false
     selectedWorkflowId.value = null
-    router.push(`/workflows/${res.id}`)
+    router.push(`/workflows/${(res as any).id || ''}`)
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || '发起失败')
   } finally {

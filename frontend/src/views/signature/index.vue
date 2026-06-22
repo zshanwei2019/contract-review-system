@@ -205,8 +205,10 @@ function formatTime(val: string) {
 function statusLabel(s: string) {
   return { pending: '待签署', signed: '已签署', rejected: '已驳回', revoked: '已撤销', expired: '已过期' }[s] || s
 }
-function statusTag(s: string) {
-  return { pending: 'warning', signed: 'success', rejected: 'danger', revoked: 'info', expired: 'info' }[s] || ''
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+
+function statusTag(s: string): TagType {
+  return ({ pending: 'warning', signed: 'success', rejected: 'danger', revoked: 'info', expired: 'info' } as const)[s] || 'info'
 }
 function sealTypeLabel(s: string) {
   return { official: '公章', contract: '合同章', finance: '财务章', legal: '法人章' }[s] || s

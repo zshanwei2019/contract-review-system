@@ -19,7 +19,7 @@
         multiple
         :auto-upload="false"
         :on-change="handleFileChange"
-        :on-remove="handleFileRemove"
+        :on-remove="() => {}"
         :before-upload="beforeUpload"
         accept=".pdf,.doc,.docx,.xls,.xlsx"
       >

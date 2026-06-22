@@ -147,15 +147,17 @@ const contractTypeOptions = [
 function categoryLabel(val: string) {
   return categoryOptions.find(c => c.value === val)?.label || val
 }
-function categoryTagType(val: string) {
-  const map: Record<string, string> = { payment: 'warning', liability: 'danger', confidentiality: 'info', termination: 'warning' }
-  return map[val] || ''
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+
+function categoryTagType(val: string): TagType {
+  const map: Record<string, TagType> = { payment: 'warning', liability: 'danger', confidentiality: 'info', termination: 'warning' }
+  return map[val] || 'info'
 }
 function riskLabel(val: string) {
   return { low: '低', medium: '中', high: '高' }[val] || val
 }
-function riskTagType(val: string) {
-  return { low: 'success', medium: 'warning', high: 'danger' }[val] || ''
+function riskTagType(val: string): TagType {
+  return ({ low: 'success', medium: 'warning', high: 'danger' } as const)[val] || 'info'
 }
 
 async function loadList() {

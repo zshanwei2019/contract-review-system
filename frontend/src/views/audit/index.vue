@@ -208,21 +208,23 @@ function actionLabel(val: string) {
   return map[val] || val
 }
 
-function actionTagType(val: string) {
-  const map: Record<string, string> = {
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+
+function actionTagType(val: string): TagType {
+  const map: Record<string, TagType> = {
     create: 'success', delete: 'danger', login: 'info',
     approve: 'warning', reject: 'danger',
   }
-  return map[val] || ''
+  return map[val] || 'info'
 }
 
-function methodTagType(val: string) {
-  const map: Record<string, string> = { GET: 'info', POST: 'success', PUT: 'warning', DELETE: 'danger' }
-  return map[val] || ''
+function methodTagType(val: string): TagType {
+  const map: Record<string, TagType> = { GET: 'info', POST: 'success', PUT: 'warning', DELETE: 'danger' }
+  return map[val] || 'info'
 }
 
-function codeTagType(code: number) {
-  if (!code) return ''
+function codeTagType(code: number): TagType {
+  if (!code) return 'info'
   if (code < 300) return 'success'
   if (code < 400) return 'info'
   if (code < 500) return 'warning'

@@ -137,8 +137,10 @@ function typeLabel(val: string) {
 function statusLabel(val: string) {
   return { draft: '草稿', published: '已发布', archived: '已归档' }[val] || val
 }
-function statusTagType(val: string) {
-  return { draft: 'info', published: 'success', archived: 'warning' }[val] || ''
+type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+
+function statusTagType(val: string): TagType {
+  return ({ draft: 'info', published: 'success', archived: 'warning' } as const)[val] || 'info'
 }
 
 const parsedVariables = computed(() => {

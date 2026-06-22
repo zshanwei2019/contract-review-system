@@ -37,4 +37,12 @@ export const risksApi = {
   quantifyAllRisks(contractId: number) {
     return request.post(`/risks/contracts/${contractId}/quantify-all`)
   },
+
+  initRules() {
+    return request.post('/risks/init-rules')
+  },
+
+  initItems() {
+    return request.post('/risks/init-rules')
+  },
 }

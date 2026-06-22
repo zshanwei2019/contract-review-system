@@ -15,6 +15,7 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["仪表�
 api_router.include_router(agent.router, prefix="/agent", tags=["AI智能体"])
 api_router.include_router(advanced_review.router, tags=["AI高级审查"])
 api_router.include_router(clause_library.router, prefix="/clause-library", tags=["条款库"])
+api_router.include_router(contract_templates.router, prefix="/templates", tags=["合同模板库"])
 api_router.include_router(audit.router, prefix="/audit", tags=["审计日志"])
 api_router.include_router(signature.router, prefix="/signature", tags=["电子签章"])
 api_router.include_router(integration.router, prefix="/integration", tags=["外部集成"])
