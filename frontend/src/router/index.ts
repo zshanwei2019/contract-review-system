@@ -142,6 +142,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '合同模板', icon: 'Files' },
       },
       {
+        path: 'audit',
+        name: 'AuditLogs',
+        component: () => import('@/views/audit/index.vue'),
+        meta: { title: '审计日志', icon: 'List', roles: ['superadmin', 'admin'] },
+      },
+      {
         path: 'agent',
         name: 'Agent',
         component: () => import('@/views/agent/index.vue'),
