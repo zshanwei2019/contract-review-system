@@ -87,7 +87,7 @@ EXTRACT_INFO_PROMPT = """请从以下合同文本中提取基本信息。
 - contract_type: 合同类型（procurement/sales/outsourcing/equipment/lease/nda/service/construction/other）
 - party_a: 甲方名称
 - party_b: 乙方名称
-- amount: 合同金额（数字）
+- amount: 合同金额（数字）。如果合同中没有明确的总金额，但有月薪/月报酬和合同期限，请自动计算总金额（月薪 × 月数）。例如：月工资5000元，合同期1年，则amount=60000。
 - currency: 货币（CNY/USD/EUR）
 - sign_date: 签订日期（YYYY-MM-DD格式）
 - effective_date: 生效日期（YYYY-MM-DD格式）
