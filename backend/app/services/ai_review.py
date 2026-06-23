@@ -184,13 +184,8 @@ def _parse_ai_response(response_text: str) -> dict:
     try:
         result = json.loads(text)
     except json.JSONDecodeError:
-        # 如果解析失败，构造一个基本结果
-        result = {
-            "risk_level": "medium",
-            "risk_score": 50,
-            "summary": response_text[:500] if len(response_text) > 500 else response_text,
-            "findings": [],
-        }
+        # JSON 可能被 max_tokens 截断，尝试抢救已完整的 findings
+        result = _salvage_truncated_json(text, response_text)
     
     # 确保必要字段存在
     result.setdefault("risk_level", "medium")
@@ -240,7 +235,7 @@ async def review_contract_with_ai(
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.3,
-            "max_tokens": 4000,
+            "max_tokens": 8000,
             "response_format": {"type": "json_object"},
         }
         
