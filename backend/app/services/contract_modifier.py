@@ -614,6 +614,7 @@ class ContractModifier:
                 findings_text += f"""
 审查问题{i}:
 - 涉及条款：{f.get('clause', '未指定')}
+- 原条款文本：{f.get('clause_text', '[未提取到原条款]')}
 - 问题描述：{f.get('content', '')}
 - 风险等级：{f.get('risk_level', 'medium')}
 - 问题类型：{f.get('category', '')}

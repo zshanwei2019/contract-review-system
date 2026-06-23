@@ -512,7 +512,7 @@ async def ai_review_contract(
             content=f"**{finding.get('title', '')}**\n\n{finding.get('description', '')}",
             suggestion=finding.get("suggestion"),
             risk_level=finding.get("risk_level"),
-            clause_reference=finding.get("clause_reference"),
+            clause_reference=finding.get("clause_location") or finding.get("clause_reference"),
             legal_basis=finding.get("legal_basis"),
         )
         db.add(opinion)
@@ -742,6 +742,18 @@ async def export_modified_contract(
     suggestions = []
     sug_objs = []
     if review_task:
+        # 同时查询 RiskItem 获取 clause_text 和 clause_location（ReviewOpinion 没有这些字段）
+        from app.models.risk import RiskItem
+        risks_result = await db.execute(
+            select(RiskItem)
+            .where(RiskItem.review_task_id == review_task.id)
+        )
+        risk_items = {r.id: r for r in risks_result.scalars().all()}
+        # 按 clause_reference/content 模糊匹配 RiskItem
+        risk_by_title = {}
+        for r in risk_items.values():
+            risk_by_title[r.title] = r
+        
         findings_result = await db.execute(
             select(ReviewOpinion)
             .where(ReviewOpinion.review_task_id == review_task.id)
@@ -753,8 +765,18 @@ async def export_modified_contract(
             "content": f.content,
             "risk_level": f.risk_level or "medium",
             "category": f.opinion_type or "",
-            "suggestion": f.suggestion or ""
+            "suggestion": f.suggestion or "",
+            "clause_text": "",
+            "clause_location": f.clause_reference or "",
         } for f in findings]
+        # 从 RiskItem 补充 clause_text 和 clause_location
+        for fl in findings_list:
+            # 尝试通过 content 中的 title 匹配 RiskItem
+            content_prefix = fl["content"].split("\n")[0].replace("**", "").strip() if fl["content"] else ""
+            matched_risk = risk_by_title.get(content_prefix)
+            if matched_risk:
+                fl["clause_text"] = matched_risk.clause_text or ""
+                fl["clause_location"] = matched_risk.clause_location or fl["clause"]
         sug_objs = contract_modifier._generate_with_rules(contract, findings_list)
         # 转成 dict 供 law_style_export 使用
         suggestions = [
@@ -1001,6 +1023,16 @@ async def compare_with_original(
         review_task = review_result.scalar_one_or_none()
         
         if review_task:
+            # 同时查询 RiskItem 获取 clause_text
+            from app.models.risk import RiskItem
+            risks_result = await db.execute(
+                select(RiskItem)
+                .where(RiskItem.review_task_id == review_task.id)
+            )
+            risk_by_title = {}
+            for r in risks_result.scalars().all():
+                risk_by_title[r.title] = r
+            
             findings_result = await db.execute(
                 select(ReviewOpinion)
                 .where(ReviewOpinion.review_task_id == review_task.id)
@@ -1013,8 +1045,17 @@ async def compare_with_original(
                 "content": f.content,
                 "risk_level": f.risk_level or "medium",
                 "category": f.opinion_type or "",
-                "suggestion": f.suggestion or ""
+                "suggestion": f.suggestion or "",
+                "clause_text": "",
+                "clause_location": f.clause_reference or "",
             } for f in findings]
+            # 从 RiskItem 补充 clause_text 和 clause_location
+            for fl in findings_list:
+                content_prefix = fl["content"].split("\n")[0].replace("**", "").strip() if fl["content"] else ""
+                matched_risk = risk_by_title.get(content_prefix)
+                if matched_risk:
+                    fl["clause_text"] = matched_risk.clause_text or ""
+                    fl["clause_location"] = matched_risk.clause_location or fl["clause"]
             suggestions = contract_modifier._generate_with_rules(contract, findings_list)
             modified_content = await contract_modifier.rewrite_contract_with_ai(
                 contract, suggestions, review_findings=findings_list
