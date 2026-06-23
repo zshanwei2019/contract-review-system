@@ -530,9 +530,10 @@ class ContractModifier:
         if not orig_content or len(orig_content) < 100:
             orig_content = contract.description or ""
 
-        # 使用AI重写合同内容 (传入原文，走改写模式)
+        # 使用AI重写合同内容 (传入原文+原始审查意见，走改写模式)
         modified_content = await self.rewrite_contract_with_ai(
-            contract, suggestions_to_apply, original_content=orig_content
+            contract, suggestions_to_apply, original_content=orig_content,
+            review_findings=findings_list
         )
         
         # 生成修改摘要
@@ -582,10 +583,12 @@ class ContractModifier:
         self,
         contract: Contract,
         suggestions_to_apply: List[ModificationSuggestion],
-        original_content: str = ""
+        original_content: str = "",
+        review_findings: List[Dict] = None
     ) -> str:
         """使用AI重写合同内容，应用修改建议。
         当 original_content > 100 字符时, 使用改写模式; 否则生成模式。
+        当 review_findings 提供时，直接传原始审查意见给AI，绕过规则引擎中间层。
         """
         if not self.api_key:
             return self._rewrite_with_rules(contract, suggestions_to_apply)
@@ -603,10 +606,26 @@ class ContractModifier:
 到期日期：{contract.expiry_date or '未指定'}
 合同摘要：{contract.description or '无'}"""
         
-        # 构建修改建议列表
-        suggestions_text = ""
-        for i, s in enumerate(suggestions_to_apply, 1):
-            suggestions_text += f"""
+        # 构建修改建议列表 — 优先使用原始审查意见，跳过规则引擎中间层
+        if review_findings:
+            # 直接传原始审查意见给 AI，让 AI 自己理解问题并生成针对性修改
+            findings_text = ""
+            for i, f in enumerate(review_findings, 1):
+                findings_text += f"""
+审查问题{i}:
+- 涉及条款：{f.get('clause', '未指定')}
+- 问题描述：{f.get('content', '')}
+- 风险等级：{f.get('risk_level', 'medium')}
+- 问题类型：{f.get('category', '')}
+- 审查建议：{f.get('suggestion', '')}"""
+            suggestions_section = f"""【审查发现的问题】
+以下是合同审查中发现的实际问题，请基于这些问题直接修改合同条款：
+{findings_text}"""
+        else:
+            # 降级：使用规则引擎生成的修改建议
+            suggestions_text = ""
+            for i, s in enumerate(suggestions_to_apply, 1):
+                suggestions_text += f"""
 修改建议{i}:
 - 涉及条款：{s.clause}
 - 原始内容：{s.original_text}
@@ -614,12 +633,14 @@ class ContractModifier:
 - 修改理由：{s.reason}
 - 法律依据：{s.legal_basis}
 - 优先级：{s.priority.value}"""
+            suggestions_section = f"""【需要应用的修改建议】
+{suggestions_text}"""
         
         has_original = bool(original_content) and len(original_content) > 100
 
         if has_original:
             truncated = original_content[:12000]
-            prompt = f"""请基于以下原始合同正文，根据修改建议进行逐条修改。
+            prompt = f"""请基于以下原始合同正文，根据审查发现的问题进行逐条修改。
 
 【合同信息】
 {contract_info}
@@ -627,27 +648,27 @@ class ContractModifier:
 【原始合同正文】
 {truncated}
 
-【需要应用的修改建议】
-{suggestions_text}
+{suggestions_section}
 
 【严格要求】
 1. **必须保留原始合同的全部条款结构** — 从第一条到最后一条，每一条都要出现在输出中
-2. 只修改与修改建议相关的条款内容，未涉及修改的条款原样保留
+2. 仔细阅读每个审查问题，定位到原文中对应的条款，进行针对性修改
 3. 修改后的条款必须是完整的法律条款文本，不能省略或用"..."代替
-4. 使用 Markdown 格式：合同标题用 # 开头，每一条款用 ## 开头（如 "## 第一条 合同主体"）
-5. 条款编号保持原文不变，不要重新编号
-6. 不要包含任何开场白、修改说明、注释 — 直接输出合同正文
-7. 不要添加原文中没有的条款
+4. 未涉及修改的条款原样保留，不要改动
+5. 使用 Markdown 格式：合同标题用 # 开头，每一条款用 ## 开头（如 "## 第一条 合同主体"）
+6. 条款编号保持原文不变，不要重新编号
+7. 不要包含任何开场白、修改说明、注释 — 直接输出合同正文
+8. 不要添加原文中没有的条款
+9. 修改要具体、有针对性，结合合同上下文和法律依据进行实质性修改
 
 请直接输出修改后的完整合同正文："""
         else:
-            prompt = f"""请根据以下合同信息和修改建议，生成一份完整的修改后合同文档。
+            prompt = f"""请根据以下合同信息和审查发现的问题，生成一份完整的修改后合同文档。
 
 【合同信息】
 {contract_info}
 
-【需要应用的修改建议】
-{suggestions_text}
+{suggestions_section}
 
 【要求】
 1. 生成一份完整的合同文档，包含所有必要的条款
@@ -680,12 +701,13 @@ class ContractModifier:
 
 ## 核心要求
 1. **保留原文结构** — 基于原始合同正文逐条修改，不得遗漏任何条款，不得擅自添加原文中不存在的条款
-2. **逐条应用修改** — 只修改与修改建议相关的条款，其余条款原样保留
+2. **针对性修改** — 仔细阅读每个审查问题的描述和建议，理解问题的本质，给出有针对性的实质性修改
 3. **条款完整性** — 每个修改后的条款必须是完整的条款文本，不能是摘要或描述
 4. **专业术语** — 使用准确的法律术语，符合中国法律文书的表达习惯
 5. **Markdown格式** — 使用 # 作为合同标题，## 作为条款标题（如"## 第一条 合同主体"），条款正文直接跟在标题下面
 6. **不要开场白** — 直接输出合同正文，不要"好的，我为您修改如下"之类的开场白
-7. **不要修改说明** — 不要在合同末尾添加"修改说明"或"本次修改了以下内容"等说明性文字"""
+7. **不要修改说明** — 不要在合同末尾添加"修改说明"或"本次修改了以下内容"等说明性文字
+8. **不要套用通用模板** — 每个修改都要结合合同上下文和具体审查意见，给出量身定制的条款文本"""
                             },
                             {
                                 "role": "user",

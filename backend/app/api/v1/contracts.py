@@ -799,7 +799,10 @@ async def export_modified_contract(
         try:
             import asyncio
             ai_content = await asyncio.wait_for(
-                contract_modifier.rewrite_contract_with_ai(contract, sug_objs, original_content=orig_content),
+                contract_modifier.rewrite_contract_with_ai(
+                    contract, sug_objs, original_content=orig_content,
+                    review_findings=findings_list
+                ),
                 timeout=120.0
             )
         except asyncio.TimeoutError:
@@ -1014,7 +1017,7 @@ async def compare_with_original(
             } for f in findings]
             suggestions = contract_modifier._generate_with_rules(contract, findings_list)
             modified_content = await contract_modifier.rewrite_contract_with_ai(
-                contract, suggestions
+                contract, suggestions, review_findings=findings_list
             )
     
     return {
