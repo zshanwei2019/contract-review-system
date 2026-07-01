@@ -802,6 +802,43 @@ async def export_modified_contract(
     cache_key = hashlib.md5(f"{contract_id}_{review_task.id if review_task else 0}_{len(suggestions)}_{contract_updated}".encode()).hexdigest()
     cache_file = f"{cache_dir}/{cache_key}.md"
     
+    # 原文版: 直接提取文件内容, 跳过 AI 改写
+    if version == "original":
+        original_content = None
+        if contract.file_path and os.path.exists(contract.file_path):
+            try:
+                from app.services.file_parser import extract_text_from_file
+                original_content = await extract_text_from_file(contract.file_path)
+            except Exception:
+                pass
+        export_content = original_content or "（无法提取合同内容）"
+        risk_level = review_task.risk_level if review_task else ""
+        date_str = datetime.date.today().strftime("%Y%m%d")
+        safe_title = re.sub(r'[\\/:*?"<>|]', '_', contract_title)[:30]
+        version_label = "原文版"
+        ext = {"word": "docx", "pdf": "pdf", "markdown": "md"}[format]
+        filename = f"{safe_title}_{version_label}_{date_str}.{ext}"
+        from urllib.parse import quote
+        filename_encoded = quote(filename)
+        
+        if format == "markdown":
+            from fastapi.responses import Response as FastResponse
+            return FastResponse(content=export_content.encode('utf-8'), media_type='text/markdown',
+                           headers={'Content-Disposition': f"attachment; filename*=UTF-8''{filename_encoded}"})
+        elif format == "word":
+            file_bytes = generate_original_docx(export_content, contract_title, contract_no)
+            media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif format == "pdf":
+            file_bytes = generate_original_pdf(export_content, contract_title, contract_no)
+            media = 'application/pdf'
+        else:
+            raise HTTPException(status_code=400, detail="不支持的格式")
+        
+        from fastapi.responses import Response as FastResponse
+        return FastResponse(content=file_bytes, media_type=media,
+                       headers={'Content-Disposition': f"attachment; filename*=UTF-8''{filename_encoded}"})
+    
+    # 修改版/清洁版: 需要 AI 改写
     # AI 改写后的内容 (含开场白, 需清洗)
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
