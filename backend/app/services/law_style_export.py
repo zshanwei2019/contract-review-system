@@ -441,20 +441,92 @@ def _add_toc_page(doc, sections: List[str]):
 
 # ============== 正文渲染 ==============
 
+def _is_md_table_row(s: str) -> bool:
+    """判断是否为 Markdown 表格行"""
+    return s.startswith('|') and s.endswith('|') and s.count('|') >= 2
+
+
+def _is_md_table_separator(s: str) -> bool:
+    """判断是否为 Markdown 表格分隔行 | --- | --- |"""
+    if not _is_md_table_row(s):
+        return False
+    cells = s.strip('|').split('|')
+    for cell in cells:
+        cell = cell.strip()
+        if not cell:
+            return False
+        if set(cell) - set('-: '):
+            return False
+    return True
+
+
+def _parse_md_table_row(s: str) -> List[str]:
+    """解析 Markdown 表格行为单元格列表"""
+    # 去掉首尾 |, 按 | 分割
+    cells = s.strip('|').split('|')
+    return [c.strip() for c in cells]
+
+
+def _add_md_table_to_docx(doc, rows: List[List[str]]):
+    """将 Markdown 表格行列表转为 Word 表格"""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    if len(rows) < 2:
+        return
+    num_cols = len(rows[0])
+    # 确保所有行列数一致
+    for r in rows:
+        while len(r) < num_cols:
+            r.append('')
+    table = doc.add_table(rows=len(rows), cols=num_cols)
+    table.style = 'Table Grid'
+    for i, row in enumerate(rows):
+        for j, cell_text in enumerate(row[:num_cols]):
+            cell = table.rows[i].cells[j]
+            cell.paragraphs[0].text = ''
+            # 清理 markdown 残留标记
+            clean = re.sub(r'\*\*(.+?)\*\*', r'\1', cell_text)
+            clean = re.sub(r'`([^`]+)`', r'\1', clean)
+            run = cell.paragraphs[0].add_run(clean)
+            if i == 0:
+                _set_run_font(run, '黑体', 10.5, True)
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            else:
+                _set_run_font(run, '宋体', 10.5)
+    _add_blank(doc, 1)
+
+
 def _render_body(doc, text: str):
     """渲染合同正文 - 智能识别层级 (支持 Markdown 标题和中文条款编号)"""
     lines = text.split('\n')
     current_level = 9
-    for line in lines:
-        s = line.strip()
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
         if not s:
             _add_blank(doc, 1)
+            i += 1
+            continue
+        # 检测 Markdown 表格
+        if _is_md_table_row(s):
+            table_lines = []
+            while i < len(lines) and _is_md_table_row(lines[i].strip()):
+                row_s = lines[i].strip()
+                if not _is_md_table_separator(row_s):
+                    table_lines.append(_parse_md_table_row(row_s))
+                i += 1
+            if len(table_lines) >= 2:
+                _add_md_table_to_docx(doc, table_lines)
+            else:
+                # 不到2行, 当普通文本
+                for r in table_lines:
+                    _add_para(doc, ' | '.join(r), level=9)
             continue
         # 只去掉 markdown 加粗/代码标记, 保留 # 标题前缀给 _detect_clause_level 识别
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
         level, cleaned = _detect_clause_level(s)
         _add_para(doc, cleaned, level=level)
+        i += 1
 
 
 # ============== 签字盖章 ==============
@@ -1058,14 +1130,69 @@ def generate_pdf_from_docx_args(
     mod_lvl = -1
     cur_sug = None
     
-    for line in content.split('\n'):
-        s = line.strip()
+    pdf_lines = content.split('\n')
+    i = 0
+    while i < len(pdf_lines):
+        s = pdf_lines[i].strip()
         if not s:
             if in_mod and cur_sug:
                 story.append(Paragraph(f'<font color="#0066CC">\u3010\u4fee\u6539\u8bf4\u660e\u3011{cur_sug}</font>', styles['body']))
                 cur_sug = None
             story.append(Spacer(1, 0.5 * cm))
+            i += 1
             continue
+        
+        # 检测 Markdown 表格
+        if _is_md_table_row(s):
+            table_lines = []
+            while i < len(pdf_lines) and _is_md_table_row(pdf_lines[i].strip()):
+                row_s = pdf_lines[i].strip()
+                if not _is_md_table_separator(row_s):
+                    table_lines.append(_parse_md_table_row(row_s))
+                i += 1
+            if len(table_lines) >= 2:
+                # 构建 reportlab Table
+                from reportlab.lib import colors as rl_colors
+                # 清理单元格文本
+                clean_rows = []
+                for ri, row in enumerate(table_lines):
+                    clean_cells = []
+                    for cell in row:
+                        c = re.sub(r'\*\*(.+?)\*\*', r'\1', cell)
+                        c = re.sub(r'`([^`]+)`', r'\1', c)
+                        c = c.replace('<', '&lt;').replace('>', '&gt;')
+                        clean_cells.append(c)
+                    clean_rows.append(clean_cells)
+                num_cols = len(clean_rows[0])
+                # 补齐列数
+                for r in clean_rows:
+                    while len(r) < num_cols:
+                        r.append('')
+                # 转为 Paragraph 以支持换行
+                para_rows = []
+                for ri, row in enumerate(clean_rows):
+                    para_cells = []
+                    for ci, cell_text in enumerate(row[:num_cols]):
+                        if ri == 0:
+                            p = Paragraph(f'<b>{cell_text}</b>', styles['body_no_indent'])
+                        else:
+                            p = Paragraph(cell_text, styles['body_no_indent'])
+                        para_cells.append(p)
+                    para_rows.append(para_cells)
+                # 计算列宽
+                avail_width = A4[0] - 3.18 * cm - 2.54 * cm
+                col_w = avail_width / num_cols
+                pdf_table = Table(para_rows, colWidths=[col_w] * num_cols)
+                pdf_table.setStyle(TableStyle([
+                    ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.black),
+                    ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#D9E2F3')),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ]))
+                story.append(pdf_table)
+                story.append(Spacer(1, 0.5 * cm))
+            continue
+        
         s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
         s = re.sub(r'`([^`]+)`', r'\1', s)
         is_mod = '[已修改]' in s
@@ -1107,6 +1234,7 @@ def generate_pdf_from_docx_args(
         except Exception:
             cleaned_safe = cleaned.replace('<', '&lt;').replace('>', '&gt;')
             story.append(Paragraph(cleaned_safe, styles['body']))
+        i += 1
     
     if in_mod and cur_sug:
         story.append(Paragraph(f'<font color="#0066CC">\u3010\u4fee\u6539\u8bf4\u660e\u3011{cur_sug}</font>', styles['body']))
