@@ -5,6 +5,10 @@
 - 缓存: Redis (按 hash(clause_type+text) 索引)
 """
 import os
+# 跳过 huggingface 网络检查，模型已缓存在本地
+os.environ.setdefault('HF_HUB_OFFLINE', '1')
+os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
+
 import json
 import hashlib
 import logging
