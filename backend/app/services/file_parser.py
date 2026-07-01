@@ -343,8 +343,136 @@ def _parse_xmind_xml(element, lines, depth):
         _parse_xmind_xml(child, lines, depth + 1)
 
 
+def _group_ocr_items(items: list, y_threshold: float = 30.0) -> list:
+    """将OCR结果按Y坐标聚类成行，每行按X排序"""
+    if not items:
+        return []
+    items_sorted = sorted(items, key=lambda a: a['y_center'])
+    rows = []
+    current_row = [items_sorted[0]]
+    for item in items_sorted[1:]:
+        if abs(item['y_center'] - current_row[0]['y_center']) < y_threshold:
+            current_row.append(item)
+        else:
+            rows.append(current_row)
+            current_row = [item]
+    rows.append(current_row)
+    for row in rows:
+        row.sort(key=lambda a: a['x1'])
+    return rows
+
+
+def _detect_table_columns(rows: list, min_cols: int = 3, min_rows: int = 3) -> tuple:
+    """检测表格区域：返回 (table_start_idx, table_end_idx, col_boundaries) 或 None
+    col_boundaries 是表头每列的 (x1, x2)
+    """
+    # 找多列行（>= min_cols）
+    multi_col_rows = []
+    for i, row in enumerate(rows):
+        if len(row) >= min_cols:
+            multi_col_rows.append(i)
+    if len(multi_col_rows) < min_rows:
+        return None
+    # 找最长的连续段（允许中间有1行间隔）
+    best_start, best_end = multi_col_rows[0], multi_col_rows[0]
+    cur_start, cur_end = multi_col_rows[0], multi_col_rows[0]
+    for i in range(1, len(multi_col_rows)):
+        if multi_col_rows[i] - multi_col_rows[i - 1] <= 3:
+            cur_end = multi_col_rows[i]
+        else:
+            if cur_end - cur_start > best_end - best_start:
+                best_start, best_end = cur_start, cur_end
+            cur_start, cur_end = multi_col_rows[i], multi_col_rows[i]
+    if cur_end - cur_start > best_end - best_start:
+        best_start, best_end = cur_start, cur_end
+    if best_end - best_start + 1 < min_rows:
+        return None
+    # 用众数（出现最频繁的列数）作为表格列数，避免OCR多分item导致列数偏大
+    from collections import Counter
+    table_rows = rows[best_start:best_end + 1]
+    col_counts = Counter(len(r) for r in table_rows)
+    max_cols = col_counts.most_common(1)[0][0]
+    if max_cols < min_cols:
+        max_cols = max(len(r) for r in table_rows)
+    # 表头行：列数==max_cols 且 Y坐标最小（最靠上的多列行）
+    header_candidates = [(i, r) for i, r in enumerate(table_rows) if len(r) == max_cols]
+    header_idx_in_table = min(header_candidates, key=lambda x: x[1][0]['y_center'])[0] if header_candidates else 0
+    header_row = table_rows[header_idx_in_table]
+    # 表头必须是表格区域的第一行：调整 best_start 到表头位置
+    best_start = best_start + header_idx_in_table
+    header_idx_in_table = 0
+    col_boundaries = [(item['x1'], item['x2']) for item in header_row]
+    return (best_start, best_end, col_boundaries, header_idx_in_table)
+
+
+def _assign_to_columns(row_items: list, col_boundaries: list) -> list:
+    """将一行的OCR items分配到对应列，用左边界(x1)匹配列"""
+    num_cols = len(col_boundaries)
+    cells = [''] * num_cols
+    # 列分界点：相邻列边界的中点
+    col_dividers = []
+    for ci in range(num_cols - 1):
+        col_dividers.append((col_boundaries[ci][1] + col_boundaries[ci + 1][0]) / 2)
+    for item in row_items:
+        best_col = 0
+        for ci, divider in enumerate(col_dividers):
+            if item['x1'] > divider:
+                best_col = ci + 1
+            else:
+                break
+        if cells[best_col]:
+            cells[best_col] += ' ' + item['text']
+        else:
+            cells[best_col] = item['text']
+    return cells
+
+
+def _merge_continuation_rows(table_rows: list, col_boundaries: list, min_cols: int = 3) -> list:
+    """合并续行到上一行：列数 < min_cols 的行合并到上一行对应列
+    table_rows[0] 是表头，不参与合并
+    """
+    if len(table_rows) <= 1:
+        return table_rows
+    merged = [table_rows[0]]  # 表头保持
+    for row in table_rows[1:]:
+        if len(row) < min_cols:
+            # 续行：合并到上一行
+            cells = _assign_to_columns(row, col_boundaries)
+            if isinstance(merged[-1], dict) and merged[-1].get('_merged'):
+                prev_cells = merged[-1]['_cells']
+            else:
+                prev_cells = _assign_to_columns(merged[-1], col_boundaries)
+            for ci in range(len(cells)):
+                if cells[ci]:
+                    if prev_cells[ci]:
+                        prev_cells[ci] += ' ' + cells[ci]
+                    else:
+                        prev_cells[ci] = cells[ci]
+            merged[-1] = {'_cells': prev_cells, '_merged': True}
+        else:
+            merged.append(row)
+    return merged
+
+
+def _build_markdown_table(table_rows: list, col_boundaries: list) -> list:
+    """将表格行构建为Markdown表格行列表"""
+    num_cols = len(col_boundaries)
+    lines = []
+    header_done = False
+    for row in table_rows:
+        if isinstance(row, dict) and row.get('_merged'):
+            cells = row['_cells']
+        else:
+            cells = _assign_to_columns(row, col_boundaries)
+        lines.append('| ' + ' | '.join(cells) + ' |')
+        if not header_done:
+            lines.append('| ' + ' | '.join(['---'] * num_cols) + ' |')
+            header_done = True
+    return lines
+
+
 def _ocr_pdf(file_path: str, max_length: int) -> str:
-    """对扫描件PDF做OCR：逐页转图片 → PaddleOCR识别"""
+    """对扫描件PDF做OCR：逐页转图片 → PaddleOCR识别 → 重建表格"""
     import tempfile
     import os
     try:
@@ -364,41 +492,91 @@ def _ocr_pdf(file_path: str, max_length: int) -> str:
     all_lines = []
     for page_idx in range(len(doc)):
         page = doc[page_idx]
-        # 2x zoom ~ 144 DPI，兼顾速度和准确率
-        mat = fitz.Matrix(2.0, 2.0)
+        mat = fitz.Matrix(3.0, 3.0)
         pix = page.get_pixmap(matrix=mat)
         tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
         pix.save(tmp.name)
-        doc.close() if page_idx == len(doc) - 1 else None
 
         try:
-            # 优先用 predict (PaddleOCR 3.x)，降级 ocr (2.x)
+            # 获取OCR结果（含坐标）
+            items = []
             if hasattr(ocr, 'predict'):
                 results = ocr.predict(tmp.name)
-                page_lines = []
                 for r in results:
                     res = r.json if hasattr(r, 'json') else r
                     if isinstance(res, dict) and 'res' in res:
                         res = res['res']
+                    dt_polys = res.get('dt_polys', []) if isinstance(res, dict) else []
                     rec_texts = res.get('rec_texts', []) if isinstance(res, dict) else []
-                    page_lines.extend(rec_texts)
+                    rec_scores = res.get('rec_scores', []) if isinstance(res, dict) else []
+                    for poly, text, score in zip(dt_polys, rec_texts, rec_scores):
+                        xs = [p[0] for p in poly]
+                        ys = [p[1] for p in poly]
+                        items.append({
+                            'text': text,
+                            'x1': min(xs), 'x2': max(xs),
+                            'y1': min(ys), 'y2': max(ys),
+                            'y_center': (min(ys) + max(ys)) / 2,
+                            'x_center': (min(xs) + max(xs)) / 2,
+                        })
             else:
                 result = ocr.ocr(tmp.name)
-                page_lines = []
                 if result and result[0]:
                     for line in result[0]:
                         text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
-                        page_lines.append(text)
+                        poly = line[0]
+                        xs = [p[0] for p in poly]
+                        ys = [p[1] for p in poly]
+                        items.append({
+                            'text': text,
+                            'x1': min(xs), 'x2': max(xs),
+                            'y1': min(ys), 'y2': max(ys),
+                            'y_center': (min(ys) + max(ys)) / 2,
+                            'x_center': (min(xs) + max(xs)) / 2,
+                        })
 
-            if page_lines:
-                all_lines.append(f"--- 第{page_idx + 1}页 ---")
-                all_lines.extend(page_lines)
+            if not items:
+                continue
+
+            all_lines.append(f"--- 第{page_idx + 1}页 ---")
+
+            # 按Y坐标聚类成行
+            rows = _group_ocr_items(items)
+
+            # 检测表格区域
+            table_info = _detect_table_columns(rows)
+            if table_info:
+                t_start, t_end, col_boundaries, header_idx_in_table = table_info
+                # 表格前的非表格行
+                for ri in range(t_start):
+                    row_texts = [item['text'] for item in rows[ri]]
+                    all_lines.append(' '.join(row_texts))
+                # 表格行
+                table_rows = rows[t_start:t_end + 1]
+                # 表头前的行作为普通文本
+                for i in range(header_idx_in_table):
+                    all_lines.append(' '.join(item['text'] for item in table_rows[i]))
+                # 表头 + 表头后的行
+                final_rows = [table_rows[header_idx_in_table]] + table_rows[header_idx_in_table + 1:]
+                # 合并续行
+                final_rows = _merge_continuation_rows(final_rows, col_boundaries)
+                md_lines = _build_markdown_table(final_rows, col_boundaries)
+                all_lines.extend(md_lines)
+                # 表格后的非表格行
+                for ri in range(t_end + 1, len(rows)):
+                    row_texts = [item['text'] for item in rows[ri]]
+                    all_lines.append(' '.join(row_texts))
+            else:
+                # 没有表格，直接按行输出
+                for row in rows:
+                    row_texts = [item['text'] for item in row]
+                    all_lines.append(' '.join(row_texts))
+
         except Exception as e:
             logger.warning(f"PDF第{page_idx+1}页OCR失败: {e}")
         finally:
             os.unlink(tmp.name)
 
-    # 清理（如果doc还没close）
     try:
         doc.close()
     except Exception:
@@ -406,7 +584,6 @@ def _ocr_pdf(file_path: str, max_length: int) -> str:
 
     full_text = '\n'.join(all_lines)
     if not full_text.strip():
-        # PaddleOCR 失败，尝试 fallback
         return _ocr_pdf_fallback(file_path, max_length)
     return full_text[:max_length]
 
@@ -428,7 +605,7 @@ def _ocr_pdf_fallback(file_path: str, max_length: int) -> str:
         all_lines = []
         for page_idx in range(len(doc)):
             page = doc[page_idx]
-            mat = fitz.Matrix(2.0, 2.0)
+            mat = fitz.Matrix(3.0, 3.0)
             pix = page.get_pixmap(matrix=mat)
             tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             pix.save(tmp.name)
@@ -453,7 +630,7 @@ def _ocr_pdf_fallback(file_path: str, max_length: int) -> str:
         all_lines = []
         for page_idx in range(len(doc)):
             page = doc[page_idx]
-            mat = fitz.Matrix(2.0, 2.0)
+            mat = fitz.Matrix(3.0, 3.0)
             pix = page.get_pixmap(matrix=mat)
             img = Image.open(io.BytesIO(pix.tobytes('png')))
             text = pytesseract.image_to_string(img, lang='chi_sim+eng')
