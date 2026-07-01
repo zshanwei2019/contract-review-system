@@ -21,6 +21,52 @@ import logging as _logging
 _rag_logger = _logging.getLogger("contract_rag")
 
 
+def _search_regulations_for_modification(contract: Contract, original_content: Optional[str] = None) -> str:
+    """搜索与合同相关的现行法规，注入修改 prompt"""
+    try:
+        from app.services.regulation_updater import search_regulations
+        
+        full_text = f"{contract.title or ''} {original_content or ''}"
+        
+        # 动态关键词
+        keywords = ["违约责任", "合同解除", "违约金"]
+        if "保密" in full_text or "竞业" in full_text:
+            keywords += ["保密", "竞业限制"]
+        if "担保" in full_text or "保证" in full_text:
+            keywords += ["担保", "保证方式"]
+        if "租赁" in full_text:
+            keywords += ["租赁", "转租"]
+        if "买卖" in full_text or "采购" in full_text:
+            keywords += ["买卖合同", "风险转移", "质量"]
+        if "格式" in full_text or "最终解释权" in full_text:
+            keywords += ["格式条款"]
+        if "个人信息" in full_text or "数据" in full_text:
+            keywords += ["个人信息"]
+        if "劳动" in full_text or "工资" in full_text or "社保" in full_text:
+            keywords += ["劳动合同", "经济补偿"]
+        
+        found_regs = []
+        seen_ids = set()
+        for kw in keywords:
+            results = search_regulations(kw)
+            for reg in results:
+                if reg.id not in seen_ids:
+                    found_regs.append(reg)
+                    seen_ids.add(reg.id)
+        
+        if not found_regs:
+            return ""
+        
+        reg_text = "\n【现行有效法规参考】\n请以以下最新法规条文为修改依据，确保法律引用准确：\n\n"
+        for reg in found_regs[:15]:
+            reg_text += f"{reg.name}{reg.article}（{reg.effective_date}施行）：\n{reg.content}\n\n"
+        
+        return reg_text
+    except Exception as e:
+        _rag_logger.warning(f"搜索法规失败: {e}")
+        return ""
+
+
 class ModificationType(str, Enum):
     """修改类型"""
     REPLACE = "replace"  # 替换内容
@@ -270,9 +316,12 @@ class ContractModifier:
             return self._generate_with_rules(contract, findings)
     
     def _build_modification_prompt(self, contract: Contract, findings: List[Dict], rag_blocks: list = None) -> str:
-        """构建修改建议提示词 (含 RAG 检索块 + 反例库)"""
+        """构建修改建议提示词 (含 RAG 检索块 + 反例库 + 法规参考)"""
         rag_section = _format_rag_blocks(rag_blocks or [])
         examples_block = _build_examples_block(findings)
+        
+        # 搜索相关法规注入
+        regulation_section = self._search_relevant_regulations_for_modification(contract, findings)
 
         return f"""请根据以下审查发现，为合同生成具体的修改建议。
 
@@ -639,10 +688,14 @@ class ContractModifier:
         
         has_original = bool(original_content) and len(original_content) > 100
 
+        # 搜索相关法规注入 prompt
+        regulation_section = _search_regulations_for_modification(contract, original_content)
+
         if has_original:
             truncated = original_content[:12000]
             prompt = f"""请基于以下原始合同和审查意见，输出一份全面优化后的合同。
 
+{regulation_section}
 【合同信息】
 {contract_info}
 
@@ -664,7 +717,7 @@ class ContractModifier:
 输出完整的优化后合同（从标题到签署栏），不要省略任何部分："""
         else:
             prompt = f"""请根据以下合同信息和审查发现的问题，生成一份完整的修改后合同文档。
-
+{regulation_section}
 【合同信息】
 {contract_info}
 

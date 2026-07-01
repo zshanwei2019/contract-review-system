@@ -190,6 +190,9 @@ def _build_review_prompt(contract_data: dict, file_content: Optional[str] = None
 {file_content}
 （以上为合同文件提取的正文内容，请重点审查）"""
 
+    # 搜索相关法规并注入 prompt
+    regulation_section = _search_relevant_regulations(contract_data, file_content)
+
     return REVIEW_USER_PROMPT_TEMPLATE.format(
         title=contract_data.get("title", "未填写"),
         contract_type=_get_contract_type_label(contract_data.get("contract_type", "")),
@@ -204,7 +207,65 @@ def _build_review_prompt(contract_data: dict, file_content: Optional[str] = None
         key_terms=contract_data.get("key_terms") or "无",
         special_terms=contract_data.get("special_terms") or "无",
         file_content_section=file_content_section,
-    )
+    ) + regulation_section
+
+
+def _search_relevant_regulations(contract_data: dict, file_content: Optional[str] = None) -> str:
+    """从本地法规库搜索与合同相关的法规，注入 prompt"""
+    try:
+        from app.services.regulation_updater import search_regulations, REGULATION_DB
+        
+        contract_type = contract_data.get("contract_type", "")
+        title = contract_data.get("title", "")
+        content = file_content or ""
+        full_text = f"{title} {content}"
+        
+        # 按合同类型确定搜索关键词
+        type_keywords = {
+            "procurement": ["买卖合同", "质量", "交付", "违约金"],
+            "sales": ["买卖合同", "风险转移", "质量"],
+            "lease": ["租赁", "转租", "租赁期限"],
+            "service": ["服务合同", "违约责任", "解除"],
+            "construction": ["工程", "验收", "保修"],
+            "other": ["违约责任", "合同解除", "违约金"],
+        }
+        keywords = type_keywords.get(contract_type, type_keywords["other"])
+        
+        # 补充基于合同内容的动态关键词
+        content_keywords = []
+        if "保密" in full_text or "竞业" in full_text:
+            content_keywords.append("保密")
+        if "担保" in full_text or "保证" in full_text:
+            content_keywords.append("担保")
+        if "格式" in full_text or "最终解释权" in full_text:
+            content_keywords.append("格式条款")
+        if "个人信息" in full_text or "数据" in full_text:
+            content_keywords.append("个人信息")
+        
+        all_keywords = keywords + content_keywords
+        
+        # 搜索法规
+        found_regs = []
+        seen_ids = set()
+        for kw in all_keywords:
+            results = search_regulations(kw)
+            for reg in results:
+                if reg.id not in seen_ids:
+                    found_regs.append(reg)
+                    seen_ids.add(reg.id)
+        
+        if not found_regs:
+            return ""
+        
+        # 构建法规参考文本
+        reg_text = "\n\n【现行有效法规参考】\n请以以下最新法规条文为审查依据，确保法律引用准确：\n\n"
+        for reg in found_regs[:15]:  # 最多注入15条
+            reg_text += f"{reg.name}{reg.article}（{reg.effective_date}施行）：\n{reg.content}\n\n"
+        
+        return reg_text
+    except Exception as e:
+        logger.warning(f"搜索法规失败: {e}")
+        return ""
 
 
 def _parse_ai_response(response_text: str) -> dict:
@@ -282,7 +343,7 @@ async def review_contract_with_ai(
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
-            "max_tokens": 8000,
+            "max_tokens": 16000,
             "response_format": {"type": "json_object"},
         }
         
