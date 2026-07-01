@@ -5,9 +5,53 @@ PDF/Word/Excel/PPT/CSV/TXT/RTF/HTML/Markdown/XMind + OCR扫描件
 
 import os
 import logging
+import hashlib
+import json
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# OCR 结果缓存目录
+_CACHE_DIR = '/tmp/contract_ocr_cache'
+
+
+def _get_cache_key(file_path: str) -> Optional[str]:
+    """基于文件路径+mtime+size 生成缓存key"""
+    try:
+        stat = os.stat(file_path)
+        raw = f"{file_path}:{stat.st_size}:{int(stat.st_mtime)}"
+        return hashlib.md5(raw.encode()).hexdigest()
+    except Exception:
+        return None
+
+
+def _get_cached(file_path: str) -> Optional[str]:
+    """读取缓存"""
+    key = _get_cache_key(file_path)
+    if not key:
+        return None
+    cache_file = os.path.join(_CACHE_DIR, f'{key}.txt')
+    try:
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                return f.read()
+    except Exception:
+        pass
+    return None
+
+
+def _set_cached(file_path: str, text: str):
+    """写入缓存"""
+    key = _get_cache_key(file_path)
+    if not key:
+        return
+    try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        cache_file = os.path.join(_CACHE_DIR, f'{key}.txt')
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            f.write(text)
+    except Exception:
+        pass
 
 # 支持的文件格式
 SUPPORTED_FORMATS = {
@@ -54,34 +98,44 @@ async def extract_text_from_file(file_path: str, max_length: int = 15000) -> Opt
         logger.error(f"文件不存在: {file_path}")
         return None
 
+    # 检查缓存
+    cached = _get_cached(file_path)
+    if cached is not None:
+        logger.info(f"命中缓存: {file_path}")
+        return cached[:max_length] if max_length > 0 else cached
+
     ext = os.path.splitext(file_path)[1].lower()
 
     try:
+        result = None
         if ext == '.txt':
-            return _read_text_file(file_path, max_length)
+            result = _read_text_file(file_path, max_length)
         elif ext == '.rtf':
-            return _extract_rtf(file_path, max_length)
+            result = _extract_rtf(file_path, max_length)
         elif ext in ('.html', '.htm'):
-            return _extract_html(file_path, max_length)
+            result = _extract_html(file_path, max_length)
         elif ext in ('.md', '.markdown'):
-            return _read_text_file(file_path, max_length)
+            result = _read_text_file(file_path, max_length)
         elif ext == '.csv':
-            return _extract_csv(file_path, max_length)
+            result = _extract_csv(file_path, max_length)
         elif ext == '.pdf':
-            return _extract_pdf(file_path, max_length)
+            result = _extract_pdf(file_path, max_length)
         elif ext in ('.doc', '.docx'):
-            return _extract_word(file_path, max_length)
+            result = _extract_word(file_path, max_length)
         elif ext in ('.xlsx', '.xls'):
-            return _extract_excel(file_path, max_length)
+            result = _extract_excel(file_path, max_length)
         elif ext in ('.pptx', '.ppt'):
-            return _extract_ppt(file_path, max_length)
+            result = _extract_ppt(file_path, max_length)
         elif ext == '.xmind':
-            return _extract_xmind(file_path, max_length)
+            result = _extract_xmind(file_path, max_length)
         elif ext in ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.gif'):
-            return _extract_image_ocr(file_path, max_length)
+            result = _extract_image_ocr(file_path, max_length)
         else:
             logger.warning(f"不支持的文件格式: {ext}")
-            return None
+        # 缓存结果
+        if result:
+            _set_cached(file_path, result)
+        return result
     except Exception as e:
         logger.error(f"文件解析失败 [{ext}]: {e}", exc_info=True)
         return None
