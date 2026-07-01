@@ -253,7 +253,7 @@ class ContractModifier:
                             }
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 8000
+                        "max_tokens": 16000
                     }
                 )
                 
@@ -737,7 +737,7 @@ class ContractModifier:
         
         try:
             timeout_val = 180.0 if has_original else 90.0
-            max_tokens_val = 16000 if has_original else 8000
+            max_tokens_val = 32000 if has_original else 16000
             async with httpx.AsyncClient(timeout=timeout_val) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
