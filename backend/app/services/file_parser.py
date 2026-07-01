@@ -156,17 +156,27 @@ def _extract_csv(file_path: str, max_length: int) -> str:
 
 
 def _extract_pdf(file_path: str, max_length: int) -> str:
-    """提取PDF内容"""
+    """提取PDF内容，扫描件自动降级OCR"""
     try:
         import fitz  # PyMuPDF
         doc = fitz.open(file_path)
         text = ""
+        has_text = False
         for page in doc:
-            text += page.get_text()
+            page_text = page.get_text()
+            if page_text.strip():
+                has_text = True
+            text += page_text
             if len(text) > max_length:
                 break
         doc.close()
-        return text[:max_length]
+
+        if has_text and text.strip():
+            return text[:max_length]
+
+        # 文本层为空 → 扫描件 PDF，降级 OCR
+        logger.info(f"PDF无文本层，使用OCR识别: {file_path}")
+        return _ocr_pdf(file_path, max_length)
     except ImportError:
         logger.warning("PyMuPDF未安装，无法解析PDF")
         return None
@@ -333,18 +343,156 @@ def _parse_xmind_xml(element, lines, depth):
         _parse_xmind_xml(child, lines, depth + 1)
 
 
+def _ocr_pdf(file_path: str, max_length: int) -> str:
+    """对扫描件PDF做OCR：逐页转图片 → PaddleOCR识别"""
+    import tempfile
+    import os
+    try:
+        import fitz
+    except ImportError:
+        logger.warning("PyMuPDF未安装，无法OCR PDF")
+        return None
+
+    try:
+        from paddleocr import PaddleOCR
+        ocr = PaddleOCR(lang='ch', use_doc_orientation_classify=False, use_doc_unwarping=False)
+    except Exception as e:
+        logger.warning(f"PaddleOCR初始化失败: {e}")
+        return _ocr_pdf_fallback(file_path, max_length)
+
+    doc = fitz.open(file_path)
+    all_lines = []
+    for page_idx in range(len(doc)):
+        page = doc[page_idx]
+        # 2x zoom ~ 144 DPI，兼顾速度和准确率
+        mat = fitz.Matrix(2.0, 2.0)
+        pix = page.get_pixmap(matrix=mat)
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        pix.save(tmp.name)
+        doc.close() if page_idx == len(doc) - 1 else None
+
+        try:
+            # 优先用 predict (PaddleOCR 3.x)，降级 ocr (2.x)
+            if hasattr(ocr, 'predict'):
+                results = ocr.predict(tmp.name)
+                page_lines = []
+                for r in results:
+                    res = r.json if hasattr(r, 'json') else r
+                    if isinstance(res, dict) and 'res' in res:
+                        res = res['res']
+                    rec_texts = res.get('rec_texts', []) if isinstance(res, dict) else []
+                    page_lines.extend(rec_texts)
+            else:
+                result = ocr.ocr(tmp.name)
+                page_lines = []
+                if result and result[0]:
+                    for line in result[0]:
+                        text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
+                        page_lines.append(text)
+
+            if page_lines:
+                all_lines.append(f"--- 第{page_idx + 1}页 ---")
+                all_lines.extend(page_lines)
+        except Exception as e:
+            logger.warning(f"PDF第{page_idx+1}页OCR失败: {e}")
+        finally:
+            os.unlink(tmp.name)
+
+    # 清理（如果doc还没close）
+    try:
+        doc.close()
+    except Exception:
+        pass
+
+    full_text = '\n'.join(all_lines)
+    if not full_text.strip():
+        # PaddleOCR 失败，尝试 fallback
+        return _ocr_pdf_fallback(file_path, max_length)
+    return full_text[:max_length]
+
+
+def _ocr_pdf_fallback(file_path: str, max_length: int) -> str:
+    """PDF OCR降级：EasyOCR → Tesseract"""
+    import tempfile
+    import os
+    try:
+        import fitz
+    except ImportError:
+        return None
+
+    # EasyOCR
+    try:
+        import easyocr
+        reader = easyocr.Reader(['ch_sim', 'en'], gpu=False, verbose=False)
+        doc = fitz.open(file_path)
+        all_lines = []
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat)
+            tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pix.save(tmp.name)
+            result = reader.readtext(tmp.name, detail=0)
+            if result:
+                all_lines.append(f"--- 第{page_idx + 1}页 ---")
+                all_lines.extend(result)
+            os.unlink(tmp.name)
+        doc.close()
+        full_text = '\n'.join(all_lines)
+        if full_text.strip():
+            return full_text[:max_length]
+    except Exception as e:
+        logger.warning(f"EasyOCR PDF降级失败: {e}")
+
+    # Tesseract
+    try:
+        import pytesseract
+        from PIL import Image
+        import io
+        doc = fitz.open(file_path)
+        all_lines = []
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat)
+            img = Image.open(io.BytesIO(pix.tobytes('png')))
+            text = pytesseract.image_to_string(img, lang='chi_sim+eng')
+            if text.strip():
+                all_lines.append(f"--- 第{page_idx + 1}页 ---")
+                all_lines.append(text)
+        doc.close()
+        full_text = '\n'.join(all_lines)
+        return full_text[:max_length] if full_text.strip() else None
+    except Exception as e:
+        logger.error(f"所有OCR引擎均失败: {e}")
+        return None
+
+
 def _extract_image_ocr(file_path: str, max_length: int) -> str:
     """OCR图片文字识别（中英文）- 首选PaddleOCR, 降级EasyOCR, 最后Tesseract"""
     # 1. PaddleOCR (中文准确率最高)
     try:
         from paddleocr import PaddleOCR
-        ocr = PaddleOCR(lang='ch')
-        result = ocr.ocr(file_path)
-        lines = []
-        if result and result[0]:
-            for line in result[0]:
-                text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
-                lines.append(text)
+        ocr = PaddleOCR(lang='ch', use_doc_orientation_classify=False, use_doc_unwarping=False)
+
+        # PaddleOCR 3.x 用 predict，2.x 用 ocr
+        if hasattr(ocr, 'predict'):
+            results = ocr.predict(file_path)
+            lines = []
+            for r in results:
+                res = r.json if hasattr(r, 'json') else r
+                if isinstance(res, dict) and 'res' in res:
+                    res = res['res']
+                rec_texts = res.get('rec_texts', []) if isinstance(res, dict) else []
+                lines.extend(rec_texts)
+        else:
+            result = ocr.ocr(file_path)
+            lines = []
+            if result and result[0]:
+                for line in result[0]:
+                    text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
+                    lines.append(text)
+
         full_text = '\n'.join(lines)
         if full_text.strip():
             return full_text[:max_length]
