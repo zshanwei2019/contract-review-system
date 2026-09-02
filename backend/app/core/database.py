@@ -42,6 +42,13 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _seed_data()
+    # 初始化默认角色/权限/超级管理员 (幂等: 已有数据时自动跳过)
+    try:
+        from app.core.init_data import init_default_data
+        await init_default_data()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"默认数据初始化跳过: {e}")
 
 
 async def _seed_data():

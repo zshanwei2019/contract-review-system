@@ -15,7 +15,7 @@
             <el-button text @click="handleMarkAllRead" :disabled="!hasUnread">全部已读</el-button>
           </div>
         </div>
-      </el-card>
+      </template>
 
       <el-table v-loading="loading" :data="notifications" stripe>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />

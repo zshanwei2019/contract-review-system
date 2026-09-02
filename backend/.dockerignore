@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.pyc
+.env
+uploads/
+contract_review.db
+tests/
+.pytest_cache/
