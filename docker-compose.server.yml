@@ -30,10 +30,10 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/contract_review
-      - SECRET_KEY=dev-secret-key-change-in-production
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=false
       - CORS_ORIGINS=["http://124.220.42.5:5173","http://124.220.42.5"]
-      - OPENAI_API_KEY=sk-575b711370604fb7959d7ed4eaf2561a
+      - OPENAI_API_KEY=${DEEPSEEK_API_KEY:?请在项目目录 .env 中设置 DEEPSEEK_API_KEY}
       - OPENAI_BASE_URL=https://api.deepseek.com
       - LLM_MODEL=deepseek-v4-pro
     volumes:
