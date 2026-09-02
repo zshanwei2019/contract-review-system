@@ -321,7 +321,7 @@ class ContractModifier:
         examples_block = _build_examples_block(findings)
         
         # 搜索相关法规注入
-        regulation_section = self._search_relevant_regulations_for_modification(contract, findings)
+        regulation_section = _search_regulations_for_modification(contract, contract.description)
 
         return f"""请根据以下审查发现，为合同生成具体的修改建议。
 
