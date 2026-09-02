@@ -1,7 +1,7 @@
 services:
-  # PostgreSQL 数据库
+  # PostgreSQL 数据库 (pgvector 镜像, 支持向量检索)
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: contract-review-db
     restart: unless-stopped
     environment:
@@ -10,6 +10,7 @@ services:
       - POSTGRES_DB=contract_review
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d contract_review"]
       interval: 5s
@@ -30,12 +31,12 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/contract_review
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
       - DEBUG=false
       - CORS_ORIGINS=["http://124.220.42.5:5173","http://124.220.42.5"]
-      - OPENAI_API_KEY=${DEEPSEEK_API_KEY:?请在项目目录 .env 中设置 DEEPSEEK_API_KEY}
-      - OPENAI_BASE_URL=https://api.deepseek.com
+      - OPENAI_API_KEY=${DEEPSEEK_API_KEY}
       - LLM_MODEL=deepseek-v4-pro
+      - HF_ENDPOINT=https://hf-mirror.com
     volumes:
       - uploads_data:/app/uploads
       - ./contract_templates:/app/contract_templates:ro

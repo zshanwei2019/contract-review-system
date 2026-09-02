@@ -23,7 +23,7 @@ async def learn_from_corrections(db: AsyncSession, limit: int = 100) -> Dict:
     # 获取最近的纠正记录
     result = await db.execute(
         select(CorrectionLog)
-        .where(CorrectionLog.learned == False)
+        .where(CorrectionLog.is_learned == False)
         .order_by(CorrectionLog.created_at.desc())
         .limit(limit)
     )
@@ -56,7 +56,7 @@ async def learn_from_corrections(db: AsyncSession, limit: int = 100) -> Dict:
             })
 
         # 标记为已学习
-        correction.learned = True
+        correction.is_learned = True
         learned_count += 1
 
     # 更新风险模式库
@@ -125,7 +125,7 @@ async def get_learning_stats(db: AsyncSession) -> Dict:
 
     # 已学习数
     learned = await db.execute(
-        select(func.count(CorrectionLog.id)).where(CorrectionLog.learned == True)
+        select(func.count(CorrectionLog.id)).where(CorrectionLog.is_learned == True)
     )
     learned_count = learned.scalar() or 0
 
